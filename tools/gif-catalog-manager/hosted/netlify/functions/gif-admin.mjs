@@ -152,16 +152,40 @@ async function safeFetch(value) {
   let url = value;
   for (let redirect = 0; redirect <= 5; redirect += 1) {
     await validatePublicUrl(url);
+
+    let referer = '';
+    try {
+      const u = new URL(url);
+      const parts = u.hostname.split('.');
+      const rootDomain = parts.length >= 2 ? parts.slice(-2).join('.') : u.hostname;
+      referer = `${u.protocol}//${rootDomain}/`;
+    } catch { /* ignore */ }
+
+    const makeHeaders = (ref) => ({
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,text/html;q=0.8,*/*;q=0.5',
+      'Accept-Language': 'en-US,en;q=0.9',
+      ...(ref ? { Referer: ref } : {}),
+      'Sec-Fetch-Dest': 'image',
+      'Sec-Fetch-Mode': 'no-cors',
+      'Sec-Fetch-Site': 'cross-site',
+    });
+
     let response;
     try {
       response = await fetch(url, {
         redirect: 'manual',
         signal: AbortSignal.timeout(20000),
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          Accept: 'image/gif,image/webp,image/apng,image/png,image/jpeg,text/html;q=0.8,*/*;q=0.5',
-        },
+        headers: makeHeaders(referer),
       });
+      if ((response.status === 403 || response.status === 401) && referer) {
+        const retry = await fetch(url, {
+          redirect: 'manual',
+          signal: AbortSignal.timeout(20000),
+          headers: makeHeaders(''),
+        });
+        if (retry.ok) response = retry;
+      }
     } catch { fail('Could not reach the link. It may have expired or block downloads.'); }
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location');
@@ -419,12 +443,20 @@ export default async (request) => {
     const payload = await jsonBody(request);
     if (route === 'preview') {
       const sourceUrl = String(payload.url || '').trim();
-      if (!sourceUrl || sourceUrl.length > 4096) fail('Paste a public link to an image or GIF.');
+      const fileBase64 = String(payload.fileBase64 || '').trim();
+      if (!sourceUrl && !fileBase64) fail('Paste a link or select a file to import.');
       let converted;
       let lastError;
-      for (const candidate of await imageCandidates(sourceUrl)) {
-        try { converted = await normalizeGif(candidate.data); break; }
-        catch (error) { lastError = error; }
+      if (fileBase64) {
+        if (fileBase64.length > Math.ceil(MAX_SOURCE / 3) * 4 + 8) fail('That file is too large to import.', 413);
+        const data = Buffer.from(fileBase64, 'base64');
+        converted = await normalizeGif(data);
+      } else {
+        if (sourceUrl.length > 4096) fail('That link is too long.');
+        for (const candidate of await imageCandidates(sourceUrl)) {
+          try { converted = await normalizeGif(candidate.data); break; }
+          catch (error) { lastError = error; }
+        }
       }
       if (!converted) throw lastError || new Error('No supported image was found.');
       const sha256 = createHash('sha256').update(converted.data).digest('hex');

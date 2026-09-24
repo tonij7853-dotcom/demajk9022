@@ -107,7 +107,10 @@ if (toggleCodeButton) {
   });
 }
 
+let stagedFileBase64 = null;
+
 $('#gif-url').addEventListener('input', () => {
+  stagedFileBase64 = null;
   stagedPreview = null;
   $('#publish-button').disabled = true;
   $('#preview-image').hidden = true;
@@ -122,14 +125,36 @@ $('#gif-url').addEventListener('input', () => {
 });
 $('#gif-title').addEventListener('input', () => { $('#gif-title').dataset.edited = 'true'; });
 
+const fileInput = $('#gif-file');
+if (fileInput) {
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      stagedFileBase64 = String(reader.result).split(',')[1] || '';
+      $('#gif-url').value = '';
+      const name = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ').trim();
+      if (name && !$('#gif-title').dataset.edited) $('#gif-title').value = name;
+      $('#gif-form').requestSubmit();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 $('#gif-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const button = $('#preview-button');
   button.disabled = true;
-  button.textContent = 'Checking link…';
+  button.textContent = 'Processing…';
   setStatus();
   try {
-    stagedPreview = await api('preview', { url: $('#gif-url').value.trim() });
+    const url = $('#gif-url').value.trim();
+    if (!url && !stagedFileBase64) {
+      throw new Error('Paste a link or choose a file to preview.');
+    }
+    const payload = stagedFileBase64 ? { fileBase64: stagedFileBase64 } : { url };
+    stagedPreview = await api('preview', payload);
     $('#preview-image').src = `data:image/gif;base64,${stagedPreview.gifBase64}`;
     $('#preview-image').hidden = false;
     $('#preview-empty').hidden = true;
@@ -143,7 +168,7 @@ $('#gif-form').addEventListener('submit', async (event) => {
     }
     details.hidden = false;
     $('#publish-button').disabled = Boolean(pendingUpdate);
-    setStatus('Preview checked. Add it to publish it for app users.', 'success');
+    setStatus('Preview ready. Add it to create the publish pull request.', 'success');
   } catch (error) {
     stagedPreview = null;
     $('#preview-image').hidden = true;
