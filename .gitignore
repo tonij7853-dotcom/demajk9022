@@ -28,4 +28,5 @@ app/src/main/assets/embedded
 copilot.data.migration*xml
 *.local.*
 *.apk
+community-assets/gifs/*.gif
 

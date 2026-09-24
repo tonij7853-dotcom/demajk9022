@@ -68,11 +68,15 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val GIF_CATALOG_URL =
+private const val NETLIFY_GIF_CATALOG_URL =
+    "https://cheerful-pothos-8d3ee6.netlify.app/api/catalog"
+private const val NETLIFY_GIF_ASSET_PREFIX =
+    "https://cheerful-pothos-8d3ee6.netlify.app/api/raw/"
+private const val LEGACY_GIF_CATALOG_URL =
     "https://raw.githubusercontent.com/tonij7853-dotcom/demajk9022/main/community-assets/gifs/catalog.json"
-private const val GIF_ASSET_PREFIX =
+private const val LEGACY_GIF_ASSET_PREFIX =
     "https://raw.githubusercontent.com/tonij7853-dotcom/demajk9022/main/community-assets/gifs/"
-private const val MAX_CATALOG_BYTES = 256 * 1024
+private const val MAX_CATALOG_BYTES = 512 * 1024
 private const val MAX_GIF_BYTES = 15 * 1024 * 1024
 
 @Serializable
@@ -355,7 +359,19 @@ fun GifPickerSheet(
 }
 
 private fun fetchGifCatalog(): List<GifItem> {
-    val connection = (URL(GIF_CATALOG_URL).openConnection() as HttpURLConnection).apply {
+    return try {
+        fetchCatalogFromUrl(NETLIFY_GIF_CATALOG_URL)
+    } catch (_: Exception) {
+        try {
+            fetchCatalogFromUrl(LEGACY_GIF_CATALOG_URL)
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+}
+
+private fun fetchCatalogFromUrl(catalogUrl: String): List<GifItem> {
+    val connection = (URL(catalogUrl).openConnection() as HttpURLConnection).apply {
         connectTimeout = 10_000
         readTimeout = 15_000
         instanceFollowRedirects = true
@@ -443,4 +459,5 @@ private fun downloadGif(gif: GifItem, cacheDir: File): File {
 }
 
 private fun isAllowedGifUrl(url: String): Boolean =
-    url.startsWith(GIF_ASSET_PREFIX) && url.endsWith(".gif", ignoreCase = true)
+    (url.startsWith(NETLIFY_GIF_ASSET_PREFIX) || url.startsWith(LEGACY_GIF_ASSET_PREFIX)) &&
+        url.endsWith(".gif", ignoreCase = true)

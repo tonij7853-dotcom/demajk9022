@@ -1,26 +1,25 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import sharp from 'sharp';
+import { getStore } from '@netlify/blobs';
 
 const MAX_SOURCE = 40 * 1024 * 1024;
 const MAX_OUTPUT = 4 * 1024 * 1024;
 const MAX_CATALOG = 300;
 const MAX_FRAMES = 240;
 const MAX_ANIMATION_PIXELS = 90_000_000;
-const OWNER = process.env.GIF_GITHUB_OWNER || 'tonij7853-dotcom';
-const REPO = process.env.GIF_GITHUB_REPO || 'demajk9022';
-const BRANCH = process.env.GIF_GITHUB_BRANCH || 'main';
-const API = `https://api.github.com/repos/${OWNER}/${REPO}`;
 const ADMIN_ACCESS_CODE = (process.env.GIF_ADMIN_ACCESS_CODE || process.env.GIF_ACCESS_CODE || '').trim();
+const SITE_DOMAIN = (process.env.URL || 'https://cheerful-pothos-8d3ee6.netlify.app').replace(/\/+$/, '');
 
-function reply(body, status = 200) {
+function reply(body, status = 200, extraHeaders = {}) {
   return Response.json(body, {
     status,
     headers: {
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
+      ...extraHeaders,
     },
   });
 }
@@ -321,149 +320,117 @@ async function normalizeGif(data) {
   }
 }
 
-function githubHeaders() {
-  const token = process.env.GIF_GITHUB_TOKEN;
-  if (!token) fail('GIF Studio is not fully configured yet. Add the GitHub publishing token to the Netlify site environment.', 503);
-  return {
-    Authorization: `Bearer ${token}`,
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-    'User-Agent': 'Dismod-GIF-Studio',
-  };
-}
-
-async function github(path, options = {}) {
-  const response = await fetch(`${API}${path}`, {
-    ...options,
-    headers: { ...githubHeaders(), ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers },
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    if (response.status === 401 || response.status === 403) fail('GitHub rejected the publisher. Check the token permissions and branch rules in Netlify.', response.status);
-    fail(data.message || 'GitHub did not accept the catalog update.', response.status >= 500 ? 502 : 409);
-  }
-  return data;
-}
-
-const catalogPath = 'community-assets/gifs/catalog.json';
-function apiPath(path) { return `/contents/${path}?ref=${encodeURIComponent(BRANCH)}`; }
-
-async function readCatalog() {
-  try {
-    const file = await github(apiPath(catalogPath));
-    const text = Buffer.from(file.content.replace(/\s/g, ''), 'base64').toString('utf8');
-    const catalog = JSON.parse(text);
-    if (!Array.isArray(catalog.gifs)) fail('The catalog does not contain a gifs list.', 500);
-    return catalog;
-  } catch (error) {
-    if (error.status === 404) return { gifs: [] };
-    throw error;
-  }
-}
-
-async function pendingCatalogPullRequest() {
-  const pullRequests = await github(`/pulls?state=open&base=${encodeURIComponent(BRANCH)}&per_page=100`);
-  return pullRequests.find((pull) => pull.head?.ref?.startsWith('gif-studio/')) || null;
-}
-
-async function commitFiles({ catalog, assetName, assetData, deleteAsset = false, title }) {
-  const gifPath = `community-assets/gifs/${assetName}`;
-  const catalogText = `${JSON.stringify(catalog, null, 2)}\n`;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const ref = await github(`/git/ref/heads/${encodeURIComponent(BRANCH)}`);
-    const parentSha = ref.object.sha;
-    const parent = await github(`/git/commits/${parentSha}`);
-    const catalogBlob = await github('/git/blobs', {
-      method: 'POST',
-      body: JSON.stringify({ content: Buffer.from(catalogText).toString('base64'), encoding: 'base64' }),
-    });
-    const treeEntries = [
-      { path: catalogPath, mode: '100644', type: 'blob', sha: catalogBlob.sha },
-    ];
-    if (assetData) {
-      const blob = await github('/git/blobs', {
-        method: 'POST',
-        body: JSON.stringify({ content: assetData.toString('base64'), encoding: 'base64' }),
-      });
-      treeEntries.push({ path: gifPath, mode: '100644', type: 'blob', sha: blob.sha });
-    } else if (deleteAsset) {
-      treeEntries.push({ path: gifPath, sha: null });
-    }
-    const tree = await github('/git/trees', {
-      method: 'POST',
-      body: JSON.stringify({ base_tree: parent.tree.sha, tree: treeEntries }),
-    });
-    const action = deleteAsset ? 'remove' : 'add';
-    const commitMessage = `[skip ci] GIF catalog: ${action} ${title}`;
-    const commit = await github('/git/commits', {
-      method: 'POST',
-      body: JSON.stringify({ message: commitMessage, tree: tree.sha, parents: [parentSha] }),
-    });
-
-    // 1. Try directly updating refs/heads/main
-    try {
-      await github(`/git/refs/heads/${encodeURIComponent(BRANCH)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ sha: commit.sha, force: false }),
-      });
-      return { direct: true, commitSha: commit.sha };
-    } catch {
-      // 2. If branch protection requires PR, create PR and auto-merge it immediately
-      const branch = `gif-studio/${randomUUID()}`;
-      await github('/git/refs', {
-        method: 'POST',
-        body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: commit.sha }),
-      });
-      const pull = await github('/pulls', {
-        method: 'POST',
-        body: JSON.stringify({
-          title: commitMessage.slice(0, 120),
-          head: `${OWNER}:${branch}`,
-          base: BRANCH,
-          body: `Auto-publishing **${title}** to Dismod GIF catalog.`,
-        }),
-      });
-      try {
-        await github(`/pulls/${pull.number}/merge`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            commit_title: commitMessage,
-            merge_method: 'squash',
-          }),
-        });
-        await github(`/git/refs/heads/${branch}`, { method: 'DELETE' }).catch(() => {});
-        return { direct: true, merged: true, number: pull.number };
-      } catch {
-        return { number: pull.number, url: pull.html_url };
-      }
-    }
-  }
-  fail('GitHub changed during publishing. Refresh the catalog and try again.', 409);
-}
-
 function slug(value) {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'gif';
 }
 
+function getGifStore() {
+  const options = { name: 'dismod-gifs', consistency: 'strong' };
+  const siteID = process.env.NETLIFY_SITE_ID || process.env.NETLIFY_BLOBS_SITE_ID;
+  const token = process.env.NETLIFY_API_TOKEN || process.env.NETLIFY_AUTH_TOKEN || process.env.NETLIFY_BLOBS_TOKEN;
+  if (siteID && token) {
+    options.siteID = siteID;
+    options.token = token;
+  }
+  return getStore(options);
+}
+
+async function readCatalog() {
+  try {
+    const store = getGifStore();
+    const catalog = await store.get('catalog.json', { type: 'json' });
+    if (catalog && Array.isArray(catalog.gifs)) {
+      return catalog;
+    }
+  } catch (error) {
+    console.warn('[gif-studio] Could not read catalog from blob store:', error?.message || error);
+  }
+  return { version: 1, gifs: [] };
+}
+
 export default async (request) => {
   try {
-    requireAdmin(request);
-    const route = new URL(request.url).pathname.split('/').filter(Boolean).at(-1);
-    if (route === 'auth') {
-      return reply({ ok: true, admin: true });
-    }
-    if (request.method === 'GET' && route === 'catalog') {
-      const catalog = await readCatalog();
-      const pending = await pendingCatalogPullRequest();
-      return reply({
-        gifs: catalog.gifs,
-        pendingPullRequest: pending ? { number: pending.number, url: pending.html_url, title: pending.title } : null,
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Code, X-Access-Code',
+          'Access-Control-Max-Age': '86400',
+        },
       });
     }
-    if (request.method !== 'POST') return reply({ error: 'Not found.' }, 404);
+
+    const url = new URL(request.url);
+    const cleanPath = url.pathname.replace(/^\/\.netlify\/functions\/gif-admin/, '').replace(/^\/api/, '');
+    const segments = cleanPath.split('/').filter(Boolean);
+    const action = segments[0] || '';
+
+    // Route: /api/raw/:filename (Public GIF binary delivery)
+    if (action === 'raw') {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return reply({ error: 'Method not allowed.' }, 405);
+      }
+      const rawName = segments[1] || url.searchParams.get('file') || '';
+      const filename = decodeURIComponent(rawName).trim();
+      if (!filename || !/^[A-Za-z0-9_-]{1,120}\.gif$/i.test(filename)) {
+        return reply({ error: 'Invalid or missing GIF filename.' }, 400);
+      }
+      try {
+        const store = getGifStore();
+        const data = await store.get(filename, { type: 'arrayBuffer' });
+        if (!data) {
+          return reply({ error: 'GIF not found.' }, 404);
+        }
+        return new Response(data, {
+          status: 200,
+          headers: {
+            'Content-Type': 'image/gif',
+            'Cache-Control': 'public, max-age=31536000, immutable',
+            'Access-Control-Allow-Origin': '*',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        });
+      } catch (error) {
+        console.error('[gif-studio] Error retrieving raw blob:', error);
+        return reply({ error: 'Failed to retrieve GIF.' }, 500);
+      }
+    }
+
+    // Route: /api/catalog (Public catalog for app and manager)
+    if (request.method === 'GET' && action === 'catalog') {
+      const catalog = await readCatalog();
+      return Response.json(
+        { gifs: catalog.gifs, pendingPullRequest: null },
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=120',
+            'Access-Control-Allow-Origin': '*',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        }
+      );
+    }
+
+    // All management endpoints below require admin access
+    requireAdmin(request);
+
+    if (action === 'auth') {
+      return reply({ ok: true, admin: true });
+    }
+
+    if (request.method !== 'POST') {
+      return reply({ error: 'Not found.' }, 404);
+    }
+
     const payload = await jsonBody(request);
-    if (route === 'preview') {
+
+    // Route: /api/preview (Admin preview of source URL / uploaded file)
+    if (action === 'preview') {
       const sourceUrl = String(payload.url || '').trim();
       const fileBase64 = String(payload.fileBase64 || '').trim();
       if (!sourceUrl && !fileBase64) fail('Paste a link or select a file to import.');
@@ -483,11 +450,17 @@ export default async (request) => {
       if (!converted) throw lastError || new Error('No supported image was found.');
       const sha256 = createHash('sha256').update(converted.data).digest('hex');
       return reply({
-        gifBase64: converted.data.toString('base64'), sha256, bytes: converted.data.byteLength,
-        width: converted.width, height: converted.height, frames: converted.frames,
+        gifBase64: converted.data.toString('base64'),
+        sha256,
+        bytes: converted.data.byteLength,
+        width: converted.width,
+        height: converted.height,
+        frames: converted.frames,
       });
     }
-    if (route === 'publish') {
+
+    // Route: /api/publish (Admin auto-publish into Netlify Blobs)
+    if (action === 'publish') {
       const title = String(payload.title || '').replace(/[\r\n\0]+/g, ' ').trim();
       const category = String(payload.category || 'Other').trim() || 'Other';
       const categoryEmoji = String(payload.categoryEmoji || '🙂').trim() || '🙂';
@@ -497,33 +470,82 @@ export default async (request) => {
       if (!Array.isArray(payload.tags) || payload.tags.length > 20) fail('Add up to 20 search tags.');
       const tags = payload.tags.map((tag) => String(tag).trim().slice(0, 32)).filter(Boolean);
       const base64 = String(payload.gifBase64 || '');
-      if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64) || base64.length > Math.ceil(MAX_OUTPUT / 3) * 4 + 8) fail('Preview the GIF again; the file is invalid or too large.', 413);
+      if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64) || base64.length > Math.ceil(MAX_OUTPUT / 3) * 4 + 8) {
+        fail('Preview the GIF again; the file is invalid or too large.', 413);
+      }
       const data = Buffer.from(base64, 'base64');
-      if (data.length > MAX_OUTPUT || createHash('sha256').update(data).digest('hex') !== payload.sha256) fail('The preview changed or is too large. Check the link again.', 413);
+      if (data.length > MAX_OUTPUT || createHash('sha256').update(data).digest('hex') !== payload.sha256) {
+        fail('The preview changed or is too large. Check the link again.', 413);
+      }
       const signature = data.subarray(0, 6).toString('ascii');
       if (!['GIF87a', 'GIF89a'].includes(signature)) fail('The preview is not a valid GIF.');
+
+      const store = getGifStore();
       const catalog = await readCatalog();
       if (catalog.gifs.length >= MAX_CATALOG) fail(`The shared picker is limited to ${MAX_CATALOG} GIFs.`, 413);
       if (catalog.gifs.some((gif) => gif.sha256 === payload.sha256)) fail('That GIF is already in the catalog.', 409);
+
       const id = `${slug(title)}-${String(payload.sha256).slice(0, 10)}`;
       const filename = `${id}.gif`;
-      const mediaUrl = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/community-assets/gifs/${filename}`;
-      catalog.gifs.push({ id, title, category, categoryEmoji, tags, mediaUrl, previewUrl: mediaUrl, sha256: payload.sha256 });
-      const pullRequest = await commitFiles({ catalog, assetName: filename, assetData: data, title });
-      return reply({ ok: true, title, filename, ...pullRequest });
+
+      // Store GIF binary privately in Netlify Blobs
+      await store.set(filename, data, {
+        metadata: {
+          id,
+          title,
+          sha256: payload.sha256,
+          createdAt: new Date().toISOString(),
+        },
+      });
+
+      const mediaUrl = `${SITE_DOMAIN}/api/raw/${filename}`;
+      catalog.gifs.push({
+        id,
+        title,
+        category,
+        categoryEmoji,
+        tags,
+        mediaUrl,
+        previewUrl: mediaUrl,
+        sha256: payload.sha256,
+      });
+
+      // Update catalog JSON in Netlify Blobs
+      await store.setJSON('catalog.json', catalog);
+
+      return reply({ ok: true, direct: true, title, filename, mediaUrl });
     }
-    if (route === 'delete') {
-      const id = String(payload.id || '');
+
+    // Route: /api/delete (Admin remove GIF from Netlify Blobs)
+    if (action === 'delete') {
+      const id = String(payload.id || '').trim();
+      if (!id) fail('Missing GIF id.');
+      const store = getGifStore();
       const catalog = await readCatalog();
       const index = catalog.gifs.findIndex((gif) => gif.id === id);
       if (index < 0) fail('That GIF is no longer in the catalog.', 404);
       const [removed] = catalog.gifs.splice(index, 1);
-      const prefix = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/community-assets/gifs/`;
-      const filename = removed.mediaUrl.startsWith(prefix) ? decodeURIComponent(removed.mediaUrl.slice(prefix.length)) : '';
-      if (!/^[A-Za-z0-9_-]{1,80}\.gif$/i.test(filename)) fail('The catalog GIF path is invalid.', 500);
-      const pullRequest = await commitFiles({ catalog, assetName: filename, deleteAsset: true, title: removed.title });
-      return reply({ ok: true, ...pullRequest });
+
+      let filename = `${removed.id}.gif`;
+      if (removed.mediaUrl) {
+        try {
+          const parsed = new URL(removed.mediaUrl);
+          const lastPart = parsed.pathname.split('/').filter(Boolean).at(-1);
+          if (lastPart && lastPart.endsWith('.gif')) filename = lastPart;
+        } catch { /* use default filename */ }
+      }
+
+      try {
+        await store.delete(filename);
+      } catch (error) {
+        console.warn(`[gif-studio] Could not delete blob ${filename}:`, error?.message || error);
+      }
+
+      await store.setJSON('catalog.json', catalog);
+
+      return reply({ ok: true, direct: true, id, title: removed.title });
     }
+
     return reply({ error: 'Not found.' }, 404);
   } catch (error) {
     const status = Number.isInteger(error.status) ? error.status : 500;
