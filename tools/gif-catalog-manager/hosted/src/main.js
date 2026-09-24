@@ -239,10 +239,25 @@ function makeCard(gif) {
   const thumb = document.createElement('div');
   thumb.className = 'gif-thumb';
   const image = document.createElement('img');
-  image.src = gif.mediaUrl;
+  const previewSrc = gif.previewUrl || gif.mediaUrl;
+  const fullSrc = gif.mediaUrl || gif.previewUrl;
+  image.src = previewSrc;
   image.alt = gif.title;
   image.loading = 'lazy';
+  image.decoding = 'async';
   thumb.append(image);
+
+  // Play animation only on hover on devices that support hover (desktop mouse)
+  // On phones/touch screens, it stays as a static still image to prevent phone lag completely!
+  if (window.matchMedia('(hover: hover) and (pointer: fine)').matches && previewSrc !== fullSrc) {
+    card.addEventListener('mouseenter', () => {
+      image.src = fullSrc;
+    });
+    card.addEventListener('mouseleave', () => {
+      image.src = previewSrc;
+    });
+  }
+
   const content = document.createElement('div');
   content.className = 'gif-card-content';
   const title = document.createElement('p');

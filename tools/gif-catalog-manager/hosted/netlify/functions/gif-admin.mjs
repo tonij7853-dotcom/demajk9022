@@ -343,12 +343,16 @@ async function readCatalog() {
     if (catalog && Array.isArray(catalog.gifs)) {
       let changed = false;
       for (const gif of catalog.gifs) {
-        if (gif.mediaUrl && gif.mediaUrl.includes('cheerful-pothos-8d3ee6.netlify.app')) {
-          gif.mediaUrl = gif.mediaUrl.replace('https://cheerful-pothos-8d3ee6.netlify.app', SITE_DOMAIN);
+        const id = gif.id || slug(gif.title);
+        const expectedMedia = `${SITE_DOMAIN}/api/raw/${id}.gif`;
+        const expectedThumb = `${SITE_DOMAIN}/api/raw/${id}-thumb.gif`;
+
+        if (gif.mediaUrl !== expectedMedia) {
+          gif.mediaUrl = expectedMedia;
           changed = true;
         }
-        if (gif.previewUrl && gif.previewUrl.includes('cheerful-pothos-8d3ee6.netlify.app')) {
-          gif.previewUrl = gif.previewUrl.replace('https://cheerful-pothos-8d3ee6.netlify.app', SITE_DOMAIN);
+        if (gif.previewUrl !== expectedThumb) {
+          gif.previewUrl = expectedThumb;
           changed = true;
         }
       }
@@ -394,7 +398,30 @@ export default async (request) => {
       }
       try {
         const store = getGifStore();
-        const data = await store.get(filename, { type: 'arrayBuffer' });
+        let data = await store.get(filename, { type: 'arrayBuffer' });
+
+        // If it's a requested thumbnail (-thumb.gif) that isn't cached yet, generate it on-the-fly from the source GIF
+        if (!data && filename.endsWith('-thumb.gif')) {
+          const sourceFilename = filename.replace(/-thumb\.gif$/i, '.gif');
+          const sourceData = await store.get(sourceFilename, { type: 'arrayBuffer' });
+          if (sourceData) {
+            try {
+              const thumbBuffer = await sharp(Buffer.from(sourceData), { animated: false, pages: 1 })
+                .resize({ width: 240, height: 240, fit: 'inside', withoutEnlargement: true })
+                .gif()
+                .toBuffer();
+              data = thumbBuffer;
+              // Cache generated thumbnail in blob store for future instant loads
+              await store.set(filename, thumbBuffer, {
+                metadata: { source: sourceFilename, type: 'thumbnail' }
+              }).catch(() => {});
+            } catch (err) {
+              console.warn('[gif-studio] Failed to generate thumbnail, falling back to source:', err);
+              data = sourceData;
+            }
+          }
+        }
+
         if (!data) {
           return reply({ error: 'GIF not found.' }, 404);
         }
@@ -501,6 +528,18 @@ export default async (request) => {
 
       const id = `${slug(title)}-${String(payload.sha256).slice(0, 10)}`;
       const filename = `${id}.gif`;
+      const thumbFilename = `${id}-thumb.gif`;
+
+      // Generate static first-frame thumbnail for lag-free mobile & grid previews
+      let thumbData;
+      try {
+        thumbData = await sharp(data, { animated: false, pages: 1 })
+          .resize({ width: 240, height: 240, fit: 'inside', withoutEnlargement: true })
+          .gif()
+          .toBuffer();
+      } catch {
+        thumbData = data;
+      }
 
       // Store GIF binary privately in Netlify Blobs
       await store.set(filename, data, {
@@ -512,7 +551,17 @@ export default async (request) => {
         },
       });
 
+      // Store thumbnail in Netlify Blobs
+      await store.set(thumbFilename, thumbData, {
+        metadata: {
+          id,
+          type: 'thumbnail',
+          createdAt: new Date().toISOString(),
+        },
+      });
+
       const mediaUrl = `${SITE_DOMAIN}/api/raw/${filename}`;
+      const previewUrl = `${SITE_DOMAIN}/api/raw/${thumbFilename}`;
       catalog.gifs.push({
         id,
         title,
@@ -520,14 +569,14 @@ export default async (request) => {
         categoryEmoji,
         tags,
         mediaUrl,
-        previewUrl: mediaUrl,
+        previewUrl,
         sha256: payload.sha256,
       });
 
       // Update catalog JSON in Netlify Blobs
       await store.setJSON('catalog.json', catalog);
 
-      return reply({ ok: true, direct: true, title, filename, mediaUrl });
+      return reply({ ok: true, direct: true, title, filename, mediaUrl, previewUrl });
     }
 
     // Route: /api/delete (Admin remove GIF from Netlify Blobs)
@@ -551,6 +600,7 @@ export default async (request) => {
 
       try {
         await store.delete(filename);
+        await store.delete(`${removed.id}-thumb.gif`).catch(() => {});
       } catch (error) {
         console.warn(`[gif-studio] Could not delete blob ${filename}:`, error?.message || error);
       }
