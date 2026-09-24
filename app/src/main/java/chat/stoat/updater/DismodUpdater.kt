@@ -89,9 +89,21 @@ object DismodUpdater {
                     }
                 }
 
-                if (updateInfo != null && updateInfo.versionCode > BuildConfig.VERSION_CODE) {
-                    Log.i(TAG, "New update found: ${updateInfo.versionName} (${updateInfo.versionCode})")
-                    _state.value = DismodUpdateState.UpdateAvailable(updateInfo)
+                val prefs = context.getSharedPreferences("dismod_updater", Context.MODE_PRIVATE)
+                val dismissedVersion = prefs.getInt("dismissed_version_code", 0)
+
+                val isNewer = updateInfo != null &&
+                        updateInfo.versionCode > BuildConfig.VERSION_CODE &&
+                        updateInfo.versionName != BuildConfig.VERSION_NAME
+
+                if (isNewer && updateInfo != null) {
+                    if (!notifyIfNoUpdate && !updateInfo.forceUpdate && updateInfo.versionCode <= dismissedVersion) {
+                        Log.d(TAG, "Update ${updateInfo.versionCode} was dismissed previously, skipping auto prompt")
+                        _state.value = DismodUpdateState.Idle
+                    } else {
+                        Log.i(TAG, "New update found: ${updateInfo.versionName} (${updateInfo.versionCode})")
+                        _state.value = DismodUpdateState.UpdateAvailable(updateInfo)
+                    }
                 } else {
                     Log.d(TAG, "App is up to date (current: ${BuildConfig.VERSION_CODE})")
                     _state.value = DismodUpdateState.Idle
@@ -152,6 +164,7 @@ object DismodUpdater {
                 }
 
                 _state.value = DismodUpdateState.ReadyToInstall(info, apkFile)
+                markVersionHandled(context, info.versionCode)
                 installApk(context, apkFile)
             } catch (e: Exception) {
                 Log.e(TAG, "Update download failed", e)
@@ -197,7 +210,19 @@ object DismodUpdater {
         }
     }
 
-    fun dismiss() {
+    fun markVersionHandled(context: Context, versionCode: Int) {
+        try {
+            val prefs = context.getSharedPreferences("dismod_updater", Context.MODE_PRIVATE)
+            prefs.edit().putInt("dismissed_version_code", versionCode).apply()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mark version handled", e)
+        }
+    }
+
+    fun dismiss(context: Context? = null, versionCode: Int? = null) {
+        if (context != null && versionCode != null) {
+            markVersionHandled(context, versionCode)
+        }
         _state.value = DismodUpdateState.Idle
     }
 }

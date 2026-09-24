@@ -51,7 +51,10 @@ fun DismodUpdateDialog(
             val info = state.info
             AlertDialog(
                 onDismissRequest = {
-                    if (!info.forceUpdate) onDismiss()
+                    if (!info.forceUpdate) {
+                        DismodUpdater.dismiss(context, info.versionCode)
+                        onDismiss()
+                    }
                 },
                 icon = {
                     Image(
@@ -139,7 +142,10 @@ fun DismodUpdateDialog(
                 },
                 dismissButton = {
                     if (!info.forceUpdate) {
-                        TextButton(onClick = onDismiss) {
+                        TextButton(onClick = {
+                            DismodUpdater.dismiss(context, info.versionCode)
+                            onDismiss()
+                        }) {
                             Text("Later")
                         }
                     }

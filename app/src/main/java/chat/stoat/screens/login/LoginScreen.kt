@@ -11,12 +11,31 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.input.TextObfuscationMode
 import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SecureTextField
@@ -31,6 +50,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -75,6 +96,10 @@ class LoginViewModel(
     val error: String?
         get() = _error
 
+    private var _isLoading by mutableStateOf(false)
+    val isLoading: Boolean
+        get() = _isLoading
+
     private var _navigateTo by mutableStateOf<String?>(null)
     val navigateTo: String?
         get() = _navigateTo
@@ -84,58 +109,70 @@ class LoginViewModel(
         get() = _mfaResponse
 
     fun doLogin() {
+        if (_isLoading) return
         _error = null
+        _isLoading = true
 
         viewModelScope.launch {
-            val response = try {
-                negotiateAuthentication(_email, _password)
-            } catch (e: Exception) {
-                _error = if (e.message?.startsWith("Unexpected JSON token") == true) {
-                    StoatApplication.instance.getString(R.string.service_health_alert_body_default)
-                } else e.message ?: "Unknown error"
-                return@launch
-            }
-            if (response.error != null) {
-                _error = response.error.type
-            } else {
-                Log.d("Login", "Checking for MFA")
-                if (response.proceedMfa) {
-                    Log.d("Login", "MFA required. Navigating to MFA screen")
-                    _mfaResponse = response
-                    _navigateTo = "mfa"
+            try {
+                val response = try {
+                    negotiateAuthentication(_email, _password)
+                } catch (e: Exception) {
+                    _error = if (e.message?.startsWith("Unexpected JSON token") == true) {
+                        StoatApplication.instance.getString(R.string.service_health_alert_body_default)
+                    } else e.message ?: "Unknown error"
+                    _isLoading = false
+                    return@launch
+                }
+                if (response.error != null) {
+                    _error = response.error.type
+                    _isLoading = false
                 } else {
-                    Log.d(
-                        "Login",
-                        "No MFA required. Login is complete! We should have a session token"
-                    )
+                    Log.d("Login", "Checking for MFA")
+                    if (response.proceedMfa) {
+                        Log.d("Login", "MFA required. Navigating to MFA screen")
+                        _mfaResponse = response
+                        _navigateTo = "mfa"
+                        _isLoading = false
+                    } else {
+                        Log.d(
+                            "Login",
+                            "No MFA required. Login is complete! We should have a session token"
+                        )
 
-                    try {
-                        val token = response.firstUserHints!!.token
-                        val id = response.firstUserHints.id
+                        try {
+                            val token = response.firstUserHints!!.token
+                            val id = response.firstUserHints.id
 
-                        kvStorage.set("sessionToken", token)
-                        kvStorage.set("sessionId", id)
+                            kvStorage.set("sessionToken", token)
+                            kvStorage.set("sessionId", id)
 
-                        val onboard = needsOnboarding(token)
-                        if (onboard) {
-                            _navigateTo = "onboarding"
-                            return@launch
+                            val onboard = needsOnboarding(token)
+                            if (onboard) {
+                                _navigateTo = "onboarding"
+                                return@launch
+                            }
+
+                            StoatAPI.loginAs(token)
+                            StoatAPI.setSessionId(response.firstUserHints.token)
+
+                            _navigateTo = "home"
+                        } catch (e: Throwable) {
+                            _error = e.message ?: "Unknown error"
+                            _isLoading = false
                         }
-
-                        StoatAPI.loginAs(token)
-                        StoatAPI.setSessionId(response.firstUserHints.token)
-
-                        _navigateTo = "home"
-                    } catch (e: Error) {
-                        _error = e.message ?: "Unknown error"
                     }
                 }
+            } catch (e: Throwable) {
+                _error = e.message ?: "Unknown error"
+                _isLoading = false
             }
         }
     }
 
     fun navigationComplete() {
         _navigateTo = null
+        _isLoading = false
     }
 
     fun setEmail(email: String) {
@@ -156,6 +193,17 @@ fun LoginScreen(navController: NavController, viewModel: LoginViewModel = koinVi
     val showPassword = remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+
+    val infiniteTransition = rememberInfiniteTransition(label = "loginPulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (viewModel.isLoading) 1.08f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(650, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
 
     LaunchedEffect(viewModel.navigateTo) {
         when (viewModel.navigateTo) {
@@ -201,17 +249,41 @@ fun LoginScreen(navController: NavController, viewModel: LoginViewModel = koinVi
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Image(
+                painter = painterResource(id = R.drawable.dismod_logo),
+                contentDescription = "Dismod Logo",
+                modifier = Modifier
+                    .size(68.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .scale(pulseScale)
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
             Text(
                 text = stringResource(R.string.login_heading),
                 style = MaterialTheme.typography.displaySmall.copy(
-                    fontSize = 30.sp,
+                    fontSize = 28.sp,
                     fontWeight = FontWeight.Black,
                     textAlign = TextAlign.Center
                 ),
                 modifier = Modifier
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
                     .fillMaxWidth()
             )
+
+            AnimatedVisibility(
+                visible = viewModel.isLoading,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .width(270.dp)
+                        .padding(top = 4.dp, bottom = 8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                )
+            }
 
             Column(
                 modifier = Modifier
@@ -225,14 +297,16 @@ fun LoginScreen(navController: NavController, viewModel: LoginViewModel = koinVi
                     type = KeyboardType.Email,
                     action = ImeAction.Next,
                     onChange = viewModel::setEmail,
+                    enabled = !viewModel.isLoading,
                     modifier = Modifier
-                        .padding(vertical = 25.dp)
+                        .padding(vertical = 16.dp)
                         .semantics {
                             contentType = ContentType.EmailAddress
                         }
                 )
                 SecureTextField(
                     passwordTextFieldState,
+                    enabled = !viewModel.isLoading,
                     label = { Text(stringResource(R.string.password)) },
                     textObfuscationMode = if (showPassword.value) {
                         TextObfuscationMode.Visible
@@ -243,9 +317,12 @@ fun LoginScreen(navController: NavController, viewModel: LoginViewModel = koinVi
                         fontFamily = FragmentMono
                     ),
                     trailingIcon = {
-                        IconButton(onClick = {
-                            showPassword.value = !showPassword.value
-                        }) {
+                        IconButton(
+                            onClick = {
+                                showPassword.value = !showPassword.value
+                            },
+                            enabled = !viewModel.isLoading
+                        ) {
                             when {
                                 showPassword.value -> {
                                     Icon(
@@ -274,9 +351,13 @@ fun LoginScreen(navController: NavController, viewModel: LoginViewModel = koinVi
                     modifier = Modifier.padding(vertical = 7.dp)
                 )
 
-                if (viewModel.error != null) {
+                AnimatedVisibility(
+                    visible = viewModel.error != null,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
                     Text(
-                        text = viewModel.error!!,
+                        text = viewModel.error ?: "",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.titleMedium.copy(
                             textAlign = TextAlign.Center,
@@ -305,18 +386,55 @@ fun LoginScreen(navController: NavController, viewModel: LoginViewModel = koinVi
             Spacer(modifier = Modifier.height(10.dp))
 
             Row {
-                TextButton(onClick = {
-                    navController.popBackStack()
-                }) {
+                TextButton(
+                    onClick = {
+                        navController.popBackStack()
+                    },
+                    enabled = !viewModel.isLoading
+                ) {
                     Text(text = stringResource(R.string.back))
                 }
 
                 Spacer(modifier = Modifier.width(10.dp))
 
-                Button(onClick = {
-                    viewModel.doLogin()
-                }) {
-                    Text(text = stringResource(R.string.login))
+                Button(
+                    onClick = {
+                        viewModel.doLogin()
+                    },
+                    enabled = !viewModel.isLoading,
+                    modifier = Modifier.animateContentSize()
+                ) {
+                    AnimatedContent(
+                        targetState = viewModel.isLoading,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(180)) togetherWith
+                                fadeOut(animationSpec = tween(180))
+                        },
+                        label = "loginButtonContent"
+                    ) { loading ->
+                        if (loading) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Logging in...",
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = stringResource(R.string.login),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             }
         }

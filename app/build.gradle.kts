@@ -59,12 +59,22 @@ android {
     compileSdk = libs.versions.compileSdk.get().toInt()
     namespace = "chat.stoat"
 
+    val propVersionCode = (project.findProperty("versionCode")?.toString()
+        ?: System.getenv("DISMOD_VERSION_CODE")
+        ?: buildproperty("versionCode"))?.toIntOrNull()
+        ?: Integer.parseInt("001_007_010".replace("_", ""), 10)
+
+    val propVersionName = (project.findProperty("versionName")?.toString()
+        ?: System.getenv("DISMOD_VERSION_NAME")
+        ?: buildproperty("versionName"))
+        ?: "1.7.10"
+
     defaultConfig {
         applicationId = "com.dismod.app"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = Integer.parseInt("001_007_009".replace("_", ""), 10)
-        versionName = "1.7.9"
+        versionCode = propVersionCode
+        versionName = propVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
