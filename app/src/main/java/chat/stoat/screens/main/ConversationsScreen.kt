@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +33,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +67,8 @@ import chat.stoat.composables.generic.presenceFromStatus
 import chat.stoat.core.model.schemas.ChannelType
 import chat.stoat.core.model.schemas.User
 import chat.stoat.internals.extensions.zero
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,6 +108,17 @@ fun ConversationsScreen(navController: NavController) {
     }
 
     val totalNotificationsCount = incomingRequestsCount + unreadServersCount
+    var showReconnectAction by rememberSaveable { mutableStateOf(false) }
+    val reconnectScope = rememberCoroutineScope()
+
+    LaunchedEffect(isConnecting, dmAbleChannels.isEmpty(), notesChannel == null) {
+        if (isConnecting && dmAbleChannels.isEmpty() && notesChannel == null) {
+            delay(12_000)
+            showReconnectAction = true
+        } else {
+            showReconnectAction = false
+        }
+    }
 
     Scaffold(
         contentWindowInsets = ScaffoldDefaults.contentWindowInsets.exclude(NavigationBarDefaults.windowInsets),
@@ -161,7 +177,7 @@ fun ConversationsScreen(navController: NavController) {
                     .padding(32.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (isConnecting) {
+                if (isConnecting && !showReconnectAction) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
@@ -173,11 +189,40 @@ fun ConversationsScreen(navController: NavController) {
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "Loading conversations...",
+                            text = "Connecting to conversations...",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                } else if (isConnecting) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_forum_24dp),
+                            contentDescription = null,
+                            modifier = Modifier.size(38.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(18.dp))
+                        Text(
+                            "Still trying to connect",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Your conversations will appear when Dismod reconnects. Check your connection, then try again.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = { reconnectScope.launch { StoatAPI.connectWS() } }) {
+                            Text("Retry connection")
+                        }
                 } else {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
