@@ -8,7 +8,7 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@netlify/identity": "2.0.0",
+    "@netlify/blobs": "^11.1.1",
     "sharp": "0.35.4"
   },
   "devDependencies": {

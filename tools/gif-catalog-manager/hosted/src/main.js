@@ -1,4 +1,3 @@
-import { getUser, handleAuthCallback, login, logout, onAuthChange } from '@netlify/identity';
 import './styles.css';
 import './overrides.css';
 
@@ -6,25 +5,40 @@ const $ = (selector) => document.querySelector(selector);
 const loginPanel = $('#login-panel');
 const adminApp = $('#admin-app');
 const status = $('#form-status');
-let user = null;
+const STORAGE_KEY = 'dismod_gif_admin_access_code';
 let stagedPreview = null;
 let busy = false;
 let pendingUpdate = null;
+
+function getStoredAccessCode() {
+  try {
+    return localStorage.getItem(STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+function setStoredAccessCode(code) {
+  try {
+    if (code) {
+      localStorage.setItem(STORAGE_KEY, code);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch { /* storage not available */ }
+}
 
 function setStatus(message = '', kind = '') {
   status.textContent = message;
   status.className = `status ${kind}`.trim();
 }
 
-function signedInView(nextUser) {
-  user = nextUser;
-  const roles = nextUser?.roles ?? [];
-  $('#logout').hidden = !nextUser;
-  $('#account-label').textContent = nextUser ? nextUser.email : 'Admin access required';
-  if (!nextUser || !roles.includes('gif-admin')) {
+function signedInView(isSignedIn) {
+  $('#logout').hidden = !isSignedIn;
+  $('#account-label').textContent = isSignedIn ? 'Admin access active' : 'Admin access required';
+  if (!isSignedIn) {
     loginPanel.hidden = false;
     adminApp.hidden = true;
-    if (nextUser) $('#login-status').textContent = 'This account is signed in but has no GIF admin access. Ask the site owner to assign the gif-admin role.';
     return;
   }
   loginPanel.hidden = true;
@@ -32,42 +46,77 @@ function signedInView(nextUser) {
   loadLibrary();
 }
 
-async function api(route, payload) {
+async function api(route, payload, codeOverride) {
+  const code = codeOverride !== undefined ? codeOverride : getStoredAccessCode();
+  const headers = {
+    ...(payload ? { 'Content-Type': 'application/json' } : {}),
+    ...(code ? { Authorization: `Bearer ${code}` } : {}),
+  };
   const response = await fetch(`/api/${route}`, {
     method: payload ? 'POST' : 'GET',
-    headers: {
-      ...(payload ? { 'Content-Type': 'application/json' } : {}),
-    },
+    headers,
     credentials: 'same-origin',
     body: payload ? JSON.stringify(payload) : undefined,
     cache: 'no-store',
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+  if (!response.ok) {
+    const error = new Error(data.error || `Request failed (${response.status}).`);
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
 $('#login-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  $('#login-status').textContent = 'Signing in…';
+  const input = $('#access-code');
+  const code = input.value.trim();
+  if (!code) return;
+  const loginStatus = $('#login-status');
+  loginStatus.textContent = 'Verifying access code…';
+  loginStatus.className = 'status';
   try {
-    await login($('#email').value.trim(), $('#password').value);
-    signedInView(await getUser());
+    await api('auth', null, code);
+    setStoredAccessCode(code);
+    input.value = '';
+    loginStatus.textContent = '';
+    loginStatus.className = 'status';
+    signedInView(true);
   } catch (error) {
-    $('#login-status').textContent = error.message || 'Sign-in failed.';
+    loginStatus.textContent = error.message || 'Invalid access code.';
+    loginStatus.className = 'status error';
   }
 });
 
-$('#logout').addEventListener('click', async () => {
-  await logout();
-  signedInView(null);
+$('#logout').addEventListener('click', () => {
+  setStoredAccessCode(null);
+  signedInView(false);
+  const loginStatus = $('#login-status');
+  loginStatus.textContent = 'Signed out.';
+  loginStatus.className = 'status';
 });
 
+const toggleCodeButton = $('#toggle-code');
+if (toggleCodeButton) {
+  toggleCodeButton.addEventListener('click', () => {
+    const input = $('#access-code');
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    toggleCodeButton.textContent = isPassword ? 'Hide' : 'Show';
+  });
+}
+
+let stagedFileBase64 = null;
+
 $('#gif-url').addEventListener('input', () => {
+  stagedFileBase64 = null;
   stagedPreview = null;
   $('#publish-button').disabled = true;
   $('#preview-image').hidden = true;
+  $('#preview-image').src = '';
   $('#preview-empty').hidden = false;
+  $('#preview-details').hidden = true;
   try {
     const file = decodeURIComponent(new URL($('#gif-url').value).pathname.split('/').filter(Boolean).at(-1) || '');
     const title = file.replace(/\.(gif|webp|png|jpe?g|apng)$/i, '').replace(/[-_]+/g, ' ').trim();
@@ -76,14 +125,36 @@ $('#gif-url').addEventListener('input', () => {
 });
 $('#gif-title').addEventListener('input', () => { $('#gif-title').dataset.edited = 'true'; });
 
+const fileInput = $('#gif-file');
+if (fileInput) {
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      stagedFileBase64 = String(reader.result).split(',')[1] || '';
+      $('#gif-url').value = '';
+      const name = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ').trim();
+      if (name && !$('#gif-title').dataset.edited) $('#gif-title').value = name;
+      $('#gif-form').requestSubmit();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 $('#gif-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const button = $('#preview-button');
   button.disabled = true;
-  button.textContent = 'Checking link…';
+  button.textContent = 'Processing…';
   setStatus();
   try {
-    stagedPreview = await api('preview', { url: $('#gif-url').value.trim() });
+    const url = $('#gif-url').value.trim();
+    if (!url && !stagedFileBase64) {
+      throw new Error('Paste a link or choose a file to preview.');
+    }
+    const payload = stagedFileBase64 ? { fileBase64: stagedFileBase64 } : { url };
+    stagedPreview = await api('preview', payload);
     $('#preview-image').src = `data:image/gif;base64,${stagedPreview.gifBase64}`;
     $('#preview-image').hidden = false;
     $('#preview-empty').hidden = true;
@@ -97,9 +168,13 @@ $('#gif-form').addEventListener('submit', async (event) => {
     }
     details.hidden = false;
     $('#publish-button').disabled = Boolean(pendingUpdate);
-    setStatus('Preview checked. Add it to publish it for app users.', 'success');
+    setStatus('Preview ready. Click "Add to Dismod App" to save it.', 'success');
   } catch (error) {
     stagedPreview = null;
+    $('#preview-image').hidden = true;
+    $('#preview-image').src = '';
+    $('#preview-empty').hidden = false;
+    $('#preview-details').hidden = true;
     setStatus(error.message || 'Unable to preview this link.', 'error');
   } finally {
     button.disabled = false;
@@ -112,7 +187,7 @@ $('#publish-button').addEventListener('click', async () => {
   busy = true;
   const button = $('#publish-button');
   button.disabled = true;
-  button.textContent = 'Publishing…';
+  button.textContent = 'Adding to app…';
   try {
     const result = await api('publish', {
       gifBase64: stagedPreview.gifBase64,
@@ -123,29 +198,38 @@ $('#publish-button').addEventListener('click', async () => {
       tags: $('#gif-tags').value.split(',').map((tag) => tag.trim()).filter(Boolean),
       rightsConfirmed: $('#rights-confirmed').checked,
     });
-    setStatus(`${result.title} is ready. Squash-merge pull request #${result.number} to publish it for app users. `, 'success');
-    const prLink = document.createElement('a');
-    prLink.href = result.url;
-    prLink.target = '_blank';
-    prLink.rel = 'noopener noreferrer';
-    prLink.textContent = 'Open pull request';
-    status.append(prLink);
+    if (result.direct) {
+      setStatus(`"${result.title}" added successfully! It is now live in your Dismod app.`, 'success');
+    } else {
+      setStatus(`"${result.title}" added to catalog. `, 'success');
+      if (result.url) {
+        const prLink = document.createElement('a');
+        prLink.href = result.url;
+        prLink.target = '_blank';
+        prLink.rel = 'noopener noreferrer';
+        prLink.textContent = 'View update';
+        status.append(prLink);
+      }
+    }
     $('#gif-url').value = '';
     $('#gif-title').value = '';
     $('#gif-title').dataset.edited = '';
     $('#gif-tags').value = '';
     $('#rights-confirmed').checked = false;
     stagedPreview = null;
+    stagedFileBase64 = null;
     $('#preview-image').hidden = true;
+    $('#preview-image').src = '';
     $('#preview-empty').hidden = false;
+    $('#preview-details').hidden = true;
     $('#preview-heading').textContent = 'Your GIF will appear here';
     await loadLibrary();
   } catch (error) {
-    setStatus(error.message || 'Publishing failed.', 'error');
+    setStatus(error.message || 'Adding GIF failed.', 'error');
   } finally {
     busy = false;
     button.disabled = !stagedPreview || Boolean(pendingUpdate);
-    button.textContent = 'Create publish PR →';
+    button.textContent = 'Add to Dismod App →';
   }
 });
 
@@ -201,6 +285,14 @@ async function loadLibrary() {
     $('#library-grid').replaceChildren(...gifs.map(makeCard));
     $('#library-empty').hidden = gifs.length > 0;
   } catch (error) {
+    if (error.status === 401) {
+      setStoredAccessCode(null);
+      signedInView(false);
+      const loginStatus = $('#login-status');
+      loginStatus.textContent = 'Session ended because the access code was rejected. Please sign in again.';
+      loginStatus.className = 'status error';
+      return;
+    }
     $('#library-grid').replaceChildren();
     $('#library-empty').textContent = error.message;
     $('#library-empty').hidden = false;
@@ -213,13 +305,19 @@ $('#library-grid').addEventListener('click', async (event) => {
   button.disabled = true;
   try {
     const result = await api('delete', { id: button.dataset.id });
-    setStatus(`Removal is ready. Squash-merge pull request #${result.number} to publish it. `, 'success');
-    const prLink = document.createElement('a');
-    prLink.href = result.url;
-    prLink.target = '_blank';
-    prLink.rel = 'noopener noreferrer';
-    prLink.textContent = 'Open pull request';
-    status.append(prLink);
+    if (result.direct) {
+      setStatus('GIF removed from Dismod app catalog.', 'success');
+    } else {
+      setStatus(`Removal ready. Merge pull request #${result.number} to complete. `, 'success');
+      if (result.url) {
+        const prLink = document.createElement('a');
+        prLink.href = result.url;
+        prLink.target = '_blank';
+        prLink.rel = 'noopener noreferrer';
+        prLink.textContent = 'View pull request';
+        status.append(prLink);
+      }
+    }
     await loadLibrary();
   } catch (error) {
     button.disabled = false;
@@ -228,6 +326,29 @@ $('#library-grid').addEventListener('click', async (event) => {
 });
 $('#refresh-button').addEventListener('click', loadLibrary);
 
-try { await handleAuthCallback(); } catch (error) { $('#login-status').textContent = error.message; }
-signedInView(await getUser().catch(() => null));
-onAuthChange((_event, nextUser) => signedInView(nextUser));
+async function initSession() {
+  const code = getStoredAccessCode();
+  if (!code) {
+    signedInView(false);
+    return;
+  }
+  try {
+    await api('auth', null, code);
+    signedInView(true);
+  } catch (error) {
+    if (error.status === 401) {
+      setStoredAccessCode(null);
+      signedInView(false);
+      const loginStatus = $('#login-status');
+      loginStatus.textContent = 'Saved access code is no longer valid. Please sign in again.';
+      loginStatus.className = 'status error';
+    } else {
+      signedInView(false);
+      const loginStatus = $('#login-status');
+      loginStatus.textContent = error.message || 'Could not verify admin access.';
+      loginStatus.className = 'status error';
+    }
+  }
+}
+
+initSession();
