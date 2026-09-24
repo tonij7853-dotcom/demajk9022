@@ -6,6 +6,10 @@ on:
 
 jobs:
   track_pr:
+    # This workflow targets Revolt's organization project and requires its PAT
+    # secret. It must not run in downstream forks, where the project is not
+    # accessible and the secret is intentionally unavailable.
+    if: ${{ github.repository == 'revoltchat/revolt' }}
     runs-on: ubuntu-latest
     steps:
       - name: Get project data
