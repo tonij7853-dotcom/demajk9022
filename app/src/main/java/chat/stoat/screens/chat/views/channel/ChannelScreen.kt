@@ -106,6 +106,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -113,6 +114,9 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.Placeholder
+import chat.stoat.composables.chat.ChatBackgroundManager
+import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
+import com.bumptech.glide.integration.compose.GlideImage
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -212,7 +216,7 @@ private const val NOT_ENOUGH_SPACE_FOR_PANES_THRESHOLD = 500
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @OptIn(
     ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class,
-    ExperimentalMaterial3ExpressiveApi::class
+    ExperimentalMaterial3ExpressiveApi::class, ExperimentalGlideComposeApi::class
 )
 @Composable
 fun ChannelScreen(
@@ -234,6 +238,7 @@ fun ChannelScreen(
     val context = LocalContext.current
     val resources = LocalResources.current
     val config = LocalConfiguration.current
+    var showChatBackgroundSheet by rememberSaveable { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val job = scope.launch { viewModel.listenToUiCallbacks() }
@@ -830,6 +835,14 @@ fun ChannelScreen(
                     },
                     actions = {
                         var overflowMenuExpanded by remember { mutableStateOf(false) }
+
+                        IconButton(onClick = { showChatBackgroundSheet = true }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_photo_library_24dp),
+                                contentDescription = "Chat Background"
+                            )
+                        }
+
                         Box {
                             IconButton(onClick = { overflowMenuExpanded = true }) {
                                 Icon(
@@ -841,6 +854,19 @@ fun ChannelScreen(
                                 expanded = overflowMenuExpanded,
                                 onDismissRequest = { overflowMenuExpanded = false }
                             ) {
+                                DropdownMenuItem(
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_photo_library_24dp),
+                                            contentDescription = null
+                                        )
+                                    },
+                                    text = { Text("Chat Background") },
+                                    onClick = {
+                                        overflowMenuExpanded = false
+                                        showChatBackgroundSheet = true
+                                    }
+                                )
                                 DropdownMenuItem(
                                     leadingIcon = {
                                         Icon(
@@ -912,6 +938,24 @@ fun ChannelScreen(
                             modifier = Modifier.weight(1f),
                             contentAlignment = Alignment.BottomCenter
                         ) {
+                            val bgRevision = ChatBackgroundManager.revision
+                            val customBg = remember(bgRevision, channelId) {
+                                ChatBackgroundManager.getBackgroundFile(context, channelId)
+                            }
+
+                            if (customBg != null && customBg.exists()) {
+                                GlideImage(
+                                    model = customBg,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.45f))
+                                )
+                            }
                             if (viewModel.items.isEmpty() && !viewModel.isLoadingOlder && !viewModel.isJumpLoading) {
                                 Column(
                                     modifier = Modifier
@@ -1639,4 +1683,11 @@ fun ChannelScreen(
         }
     }
     // </editor-fold>
+
+    if (showChatBackgroundSheet) {
+        ChatBackgroundSheet(
+            channelId = channelId,
+            onDismiss = { showChatBackgroundSheet = false }
+        )
+    }
 }
