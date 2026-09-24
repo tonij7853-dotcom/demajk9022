@@ -192,7 +192,12 @@ async function safeFetch(value) {
       url = new URL(location, url).href;
       continue;
     }
-    if (!response.ok) fail(`The source returned HTTP ${response.status}. Check that the link works.`);
+    if (!response.ok) {
+      if (response.status === 404 && (url.includes('discordapp.com') || url.includes('discordapp.net'))) {
+        fail('Discord reported "This content is no longer available" (404). Discord attachment links require security parameters (?ex=...&is=...&hm=...) and expire. Copy a fresh link from Discord or click "Upload file" to select the GIF directly from your device.', 404);
+      }
+      fail(`The source returned HTTP ${response.status}. Check that the link works.`);
+    }
     const contentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
     const limit = contentType === 'text/html' || contentType === 'application/xhtml+xml' ? 2 * 1024 * 1024 : MAX_SOURCE;
     return { data: await readLimited(response, limit), contentType, finalUrl: url };
