@@ -194,42 +194,89 @@ function ogImages(html) {
 }
 
 async function imageCandidates(url) {
-  const source = await safeFetch(url);
-  const looksHtml = /^\s*(?:<!doctype\s+html|<html|<!--)/i.test(source.data.subarray(0, 128).toString('utf8'));
-  if (!['text/html', 'application/xhtml+xml'].includes(source.contentType) && !looksHtml) return [source];
-  const candidates = ogImages(source.data.toString('utf8')).slice(0, 4);
-  if (!candidates.length) fail('This page has no public image preview. Paste a direct GIF or image link.');
-  const result = [];
-  for (const candidate of candidates) {
-    try { result.push(await safeFetch(new URL(candidate, source.finalUrl).href)); } catch { /* Try the next public preview. */ }
+  const urlsToTry = [url];
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'media.discordapp.net') {
+      const cdnUrl = new URL(url);
+      cdnUrl.hostname = 'cdn.discordapp.com';
+      cdnUrl.searchParams.delete('width');
+      cdnUrl.searchParams.delete('height');
+      urlsToTry.push(cdnUrl.href);
+    }
+  } catch { /* Handled in safeFetch */ }
+
+  let lastError;
+  for (const candidateUrl of urlsToTry) {
+    try {
+      const source = await safeFetch(candidateUrl);
+      const looksHtml = /^\s*(?:<!doctype\s+html|<html|<!--)/i.test(source.data.subarray(0, 128).toString('utf8'));
+      if (!['text/html', 'application/xhtml+xml'].includes(source.contentType) && !looksHtml) return [source];
+      const candidates = ogImages(source.data.toString('utf8')).slice(0, 4);
+      if (!candidates.length) fail('This page has no public image preview. Paste a direct GIF or image link.');
+      const result = [];
+      for (const candidate of candidates) {
+        try { result.push(await safeFetch(new URL(candidate, source.finalUrl).href)); } catch { /* Try the next public preview. */ }
+      }
+      if (result.length) return result;
+    } catch (error) {
+      lastError = error;
+    }
   }
-  if (!result.length) fail('Could not download a public image from that page.');
-  return result;
+  if (lastError) throw lastError;
+  fail('Could not download a public image from that page.');
 }
 
 async function normalizeGif(data) {
   let input;
   try {
-    input = sharp(data, { animated: true, limitInputPixels: 20_000_000, failOn: 'warning' });
+    input = sharp(data, { animated: true, limitInputPixels: 100_000_000, failOn: 'none' });
     const metadata = await input.metadata();
     if (!['gif', 'webp', 'png', 'jpeg', 'bmp'].includes(metadata.format)) fail('Use a GIF, animated WebP, PNG, or JPEG image.');
     const frames = metadata.pages || 1;
     if (frames > MAX_FRAMES) fail(`That animation has more than ${MAX_FRAMES} frames.`);
-    if (!metadata.width || !metadata.height || metadata.width * metadata.height > 20_000_000) fail('That image is too large to convert safely.');
-    if (metadata.width * metadata.height * frames > MAX_ANIMATION_PIXELS) fail('That animation is too large to convert safely.');
-    const { data: output, info } = await sharp(data, { animated: true, limitInputPixels: 20_000_000, failOn: 'warning' })
+    const frameHeight = metadata.pageHeight || (frames > 1 ? Math.floor(metadata.height / frames) : metadata.height);
+    const frameWidth = metadata.width;
+    if (!frameWidth || !frameHeight) fail('Invalid image dimensions.');
+    const totalPixels = frameWidth * metadata.height;
+    if (frameWidth * frameHeight > 20_000_000) fail('That image is too large to convert safely.');
+    if (totalPixels > MAX_ANIMATION_PIXELS) fail('That animation is too large to convert safely.');
+
+    if (metadata.format === 'gif' && data.byteLength <= MAX_OUTPUT && frameWidth <= 1024 && frameHeight <= 1024) {
+      return { data, width: frameWidth, height: frameHeight, frames };
+    }
+
+    const { data: output, info } = await sharp(data, { animated: true, limitInputPixels: 100_000_000, failOn: 'none' })
       .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
       .gif({ loop: 0, effort: 5 })
       .toBuffer({ resolveWithObject: true });
-    const actualFrames = info.pages || frames;
+
+    let finalData = output;
+    let actualFrames = info.pages || frames;
+    let finalWidth = info.width || frameWidth;
+    let finalHeight = (info.pages && info.pages > 1) ? Math.floor(info.height / info.pages) : info.height;
+
+    if (finalData.byteLength > MAX_OUTPUT && frames > 1) {
+      const downscaled = await sharp(data, { animated: true, limitInputPixels: 100_000_000, failOn: 'none' })
+        .resize({ width: 640, height: 640, fit: 'inside', withoutEnlargement: true })
+        .gif({ loop: 0, effort: 7 })
+        .toBuffer({ resolveWithObject: true });
+      if (downscaled.data.byteLength <= MAX_OUTPUT) {
+        finalData = downscaled.data;
+        actualFrames = downscaled.info.pages || frames;
+        finalWidth = downscaled.info.width;
+        finalHeight = (downscaled.info.pages && downscaled.info.pages > 1) ? Math.floor(downscaled.info.height / downscaled.info.pages) : downscaled.info.height;
+      }
+    }
+
     if (actualFrames > MAX_FRAMES) fail(`That animation has more than ${MAX_FRAMES} frames.`);
-    if (output.byteLength > MAX_OUTPUT) fail('The converted GIF is over 4 MB. Use a smaller image or a shorter animation.', 413);
-    const checked = await sharp(output, { animated: true, limitInputPixels: 20_000_000 }).metadata();
+    if (finalData.byteLength > MAX_OUTPUT) fail('The converted GIF is over 4 MB. Use a smaller image or a shorter animation.', 413);
+    const checked = await sharp(finalData, { animated: true, limitInputPixels: 100_000_000 }).metadata();
     if (checked.format !== 'gif' || !checked.width || !checked.height) fail('This image could not be converted into a valid GIF.');
-    return { data: output, width: checked.width, height: checked.height, frames: checked.pages || 1 };
+    return { data: finalData, width: finalWidth, height: finalHeight, frames: actualFrames };
   } catch (error) {
     if (error.status) throw error;
-    fail('That link did not contain a readable GIF or supported image.');
+    fail(error.message || 'That link did not contain a readable GIF or supported image.');
   }
 }
 

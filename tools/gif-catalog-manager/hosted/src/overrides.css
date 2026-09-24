@@ -37,3 +37,10 @@
   margin-top: 0;
 }
 
+[hidden],
+.preview-stage img[hidden],
+.preview-stage .preview-empty[hidden] {
+  display: none !important;
+}
+
+

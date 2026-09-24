@@ -111,7 +111,9 @@ $('#gif-url').addEventListener('input', () => {
   stagedPreview = null;
   $('#publish-button').disabled = true;
   $('#preview-image').hidden = true;
+  $('#preview-image').src = '';
   $('#preview-empty').hidden = false;
+  $('#preview-details').hidden = true;
   try {
     const file = decodeURIComponent(new URL($('#gif-url').value).pathname.split('/').filter(Boolean).at(-1) || '');
     const title = file.replace(/\.(gif|webp|png|jpe?g|apng)$/i, '').replace(/[-_]+/g, ' ').trim();
@@ -144,6 +146,10 @@ $('#gif-form').addEventListener('submit', async (event) => {
     setStatus('Preview checked. Add it to publish it for app users.', 'success');
   } catch (error) {
     stagedPreview = null;
+    $('#preview-image').hidden = true;
+    $('#preview-image').src = '';
+    $('#preview-empty').hidden = false;
+    $('#preview-details').hidden = true;
     setStatus(error.message || 'Unable to preview this link.', 'error');
   } finally {
     button.disabled = false;
