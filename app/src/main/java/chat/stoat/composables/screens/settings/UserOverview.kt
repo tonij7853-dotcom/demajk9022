@@ -31,6 +31,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import chat.stoat.R
 import chat.stoat.api.StoatAPI
@@ -62,7 +63,7 @@ fun SelfUserOverview() {
 }
 
 @Composable
-fun UserOverview(user: User, internalPadding: Boolean = true) {
+fun UserOverview(user: User, internalPadding: Boolean = true, cardHeight: Dp = 128.dp) {
     var profile by remember { mutableStateOf<Profile?>(null) }
 
     LaunchedEffect(user) {
@@ -75,7 +76,7 @@ fun UserOverview(user: User, internalPadding: Boolean = true) {
         }
     }
 
-    RawUserOverview(user, profile, internalPadding = internalPadding)
+    RawUserOverview(user, profile, internalPadding = internalPadding, cardHeight = cardHeight)
 }
 
 @Composable
@@ -84,7 +85,8 @@ fun RawUserOverview(
     profile: Profile? = null,
     pfpUrl: String? = null,
     backgroundUrl: String? = null,
-    internalPadding: Boolean = true
+    internalPadding: Boolean = true,
+    cardHeight: Dp = 128.dp
 ) {
     val context = LocalContext.current
     val cosmetics by ProfileCosmeticsStore.current
@@ -114,7 +116,7 @@ fun RawUserOverview(
     Box(
         contentAlignment = Alignment.BottomStart,
         modifier = Modifier
-            .height(128.dp)
+            .height(cardHeight)
             .padding(horizontal = if (internalPadding) 16.dp else 0.dp)
             .clip(MaterialTheme.shapes.large)
             .then(
@@ -141,7 +143,7 @@ fun RawUserOverview(
                     ?: "$STOAT_FILES/backgrounds/${if (background is AutumnResource) background.id else null}/${if (background is AutumnResource) background.filename else background}",
                 description = null,
                 modifier = Modifier
-                    .height(128.dp)
+                    .height(cardHeight)
                     .fillMaxWidth(),
                 contentScale = ContentScale.FillWidth
             )
@@ -156,14 +158,14 @@ fun RawUserOverview(
                             )
                         )
                     )
-                    .height(128.dp)
+                    .height(cardHeight)
                     .fillMaxWidth()
             )
         } else {
             Box(
                 modifier = Modifier
                     .background(chosenBanner ?: Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.colorScheme.surfaceContainer)))
-                    .height(128.dp)
+                    .height(cardHeight)
                     .fillMaxWidth()
             )
         }
@@ -173,14 +175,14 @@ fun RawUserOverview(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(128.dp)
+                        .height(cardHeight)
                         .background(brush)
                 )
             }
         }
 
         if (profileEffect != "none") {
-            CosmeticEffectOverlay(profileEffect, Modifier.fillMaxWidth().height(128.dp))
+            CosmeticEffectOverlay(profileEffect, Modifier.fillMaxWidth().height(cardHeight))
         }
 
         Row(
@@ -194,7 +196,7 @@ fun RawUserOverview(
                 rawUrl = pfpUrl,
                 userId = user.id ?: ULID.makeSpecial(0),
                 avatar = user.avatar,
-                size = 48.dp,
+                size = if (cardHeight > 128.dp) 76.dp else 48.dp,
                 decorationId = avatarDecoration,
                 presence = presenceFromStatus(user.status?.presence, user.online ?: false)
             )
