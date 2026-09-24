@@ -17,16 +17,19 @@
       </header>
 
       <section id="login-panel" class="login-panel panel">
-        <p class="eyebrow">PRIVATE ADMIN SITE</p>
-        <h1>Sign in to manage GIFs</h1>
-        <p class="muted-copy">Only accounts you invite and assign the <code>gif-admin</code> role can publish catalog changes.</p>
+        <p class="eyebrow">DISMOD GIF STUDIO</p>
+        <h1>Enter access code</h1>
+        <p class="muted-copy">Enter your admin access code to manage the Dismod GIF catalog.</p>
         <form id="login-form">
-          <label for="email">Email</label><input id="email" type="email" autocomplete="username" required />
-          <label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required />
+          <label for="access-code">Admin access code</label>
+          <div class="code-input-row">
+            <input id="access-code" type="password" autocomplete="off" placeholder="Paste or type admin access code" required autofocus />
+            <button id="toggle-code" class="button quiet" type="button" aria-label="Toggle code visibility">Show</button>
+          </div>
           <button class="button primary" type="submit">Sign in</button>
           <p id="login-status" class="status" role="status"></p>
         </form>
-        <p class="hint">No public sign-up. The site owner invites people in Netlify Identity and assigns their role.</p>
+        <p class="hint">Admin sessions stay active permanently on this device until you sign out.</p>
       </section>
 
       <div id="admin-app" hidden>

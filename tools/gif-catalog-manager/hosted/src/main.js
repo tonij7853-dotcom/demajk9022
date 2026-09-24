@@ -1,4 +1,3 @@
-import { getUser, handleAuthCallback, login, logout, onAuthChange } from '@netlify/identity';
 import './styles.css';
 import './overrides.css';
 
@@ -6,25 +5,40 @@ const $ = (selector) => document.querySelector(selector);
 const loginPanel = $('#login-panel');
 const adminApp = $('#admin-app');
 const status = $('#form-status');
-let user = null;
+const STORAGE_KEY = 'dismod_gif_admin_access_code';
 let stagedPreview = null;
 let busy = false;
 let pendingUpdate = null;
+
+function getStoredAccessCode() {
+  try {
+    return localStorage.getItem(STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+function setStoredAccessCode(code) {
+  try {
+    if (code) {
+      localStorage.setItem(STORAGE_KEY, code);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch { /* storage not available */ }
+}
 
 function setStatus(message = '', kind = '') {
   status.textContent = message;
   status.className = `status ${kind}`.trim();
 }
 
-function signedInView(nextUser) {
-  user = nextUser;
-  const roles = nextUser?.roles ?? [];
-  $('#logout').hidden = !nextUser;
-  $('#account-label').textContent = nextUser ? nextUser.email : 'Admin access required';
-  if (!nextUser || !roles.includes('gif-admin')) {
+function signedInView(isSignedIn) {
+  $('#logout').hidden = !isSignedIn;
+  $('#account-label').textContent = isSignedIn ? 'Admin access active' : 'Admin access required';
+  if (!isSignedIn) {
     loginPanel.hidden = false;
     adminApp.hidden = true;
-    if (nextUser) $('#login-status').textContent = 'This account is signed in but has no GIF admin access. Ask the site owner to assign the gif-admin role.';
     return;
   }
   loginPanel.hidden = true;
@@ -32,36 +46,66 @@ function signedInView(nextUser) {
   loadLibrary();
 }
 
-async function api(route, payload) {
+async function api(route, payload, codeOverride) {
+  const code = codeOverride !== undefined ? codeOverride : getStoredAccessCode();
+  const headers = {
+    ...(payload ? { 'Content-Type': 'application/json' } : {}),
+    ...(code ? { Authorization: `Bearer ${code}` } : {}),
+  };
   const response = await fetch(`/api/${route}`, {
     method: payload ? 'POST' : 'GET',
-    headers: {
-      ...(payload ? { 'Content-Type': 'application/json' } : {}),
-    },
+    headers,
     credentials: 'same-origin',
     body: payload ? JSON.stringify(payload) : undefined,
     cache: 'no-store',
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+  if (!response.ok) {
+    const error = new Error(data.error || `Request failed (${response.status}).`);
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
 $('#login-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  $('#login-status').textContent = 'Signing in…';
+  const input = $('#access-code');
+  const code = input.value.trim();
+  if (!code) return;
+  const loginStatus = $('#login-status');
+  loginStatus.textContent = 'Verifying access code…';
+  loginStatus.className = 'status';
   try {
-    await login($('#email').value.trim(), $('#password').value);
-    signedInView(await getUser());
+    await api('auth', null, code);
+    setStoredAccessCode(code);
+    input.value = '';
+    loginStatus.textContent = '';
+    loginStatus.className = 'status';
+    signedInView(true);
   } catch (error) {
-    $('#login-status').textContent = error.message || 'Sign-in failed.';
+    loginStatus.textContent = error.message || 'Invalid access code.';
+    loginStatus.className = 'status error';
   }
 });
 
-$('#logout').addEventListener('click', async () => {
-  await logout();
-  signedInView(null);
+$('#logout').addEventListener('click', () => {
+  setStoredAccessCode(null);
+  signedInView(false);
+  const loginStatus = $('#login-status');
+  loginStatus.textContent = 'Signed out.';
+  loginStatus.className = 'status';
 });
+
+const toggleCodeButton = $('#toggle-code');
+if (toggleCodeButton) {
+  toggleCodeButton.addEventListener('click', () => {
+    const input = $('#access-code');
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    toggleCodeButton.textContent = isPassword ? 'Hide' : 'Show';
+  });
+}
 
 $('#gif-url').addEventListener('input', () => {
   stagedPreview = null;
@@ -201,6 +245,14 @@ async function loadLibrary() {
     $('#library-grid').replaceChildren(...gifs.map(makeCard));
     $('#library-empty').hidden = gifs.length > 0;
   } catch (error) {
+    if (error.status === 401) {
+      setStoredAccessCode(null);
+      signedInView(false);
+      const loginStatus = $('#login-status');
+      loginStatus.textContent = 'Session ended because the access code was rejected. Please sign in again.';
+      loginStatus.className = 'status error';
+      return;
+    }
     $('#library-grid').replaceChildren();
     $('#library-empty').textContent = error.message;
     $('#library-empty').hidden = false;
@@ -228,6 +280,29 @@ $('#library-grid').addEventListener('click', async (event) => {
 });
 $('#refresh-button').addEventListener('click', loadLibrary);
 
-try { await handleAuthCallback(); } catch (error) { $('#login-status').textContent = error.message; }
-signedInView(await getUser().catch(() => null));
-onAuthChange((_event, nextUser) => signedInView(nextUser));
+async function initSession() {
+  const code = getStoredAccessCode();
+  if (!code) {
+    signedInView(false);
+    return;
+  }
+  try {
+    await api('auth', null, code);
+    signedInView(true);
+  } catch (error) {
+    if (error.status === 401) {
+      setStoredAccessCode(null);
+      signedInView(false);
+      const loginStatus = $('#login-status');
+      loginStatus.textContent = 'Saved access code is no longer valid. Please sign in again.';
+      loginStatus.className = 'status error';
+    } else {
+      signedInView(false);
+      const loginStatus = $('#login-status');
+      loginStatus.textContent = error.message || 'Could not verify admin access.';
+      loginStatus.className = 'status error';
+    }
+  }
+}
+
+initSession();

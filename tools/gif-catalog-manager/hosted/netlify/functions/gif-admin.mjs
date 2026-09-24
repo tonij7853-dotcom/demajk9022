@@ -1,7 +1,6 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { createHash, randomUUID } from 'node:crypto';
-import { getUser, verifyRequestOrigin } from '@netlify/identity';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import sharp from 'sharp';
 
 const MAX_SOURCE = 40 * 1024 * 1024;
@@ -13,6 +12,7 @@ const OWNER = process.env.GIF_GITHUB_OWNER || 'tonij7853-dotcom';
 const REPO = process.env.GIF_GITHUB_REPO || 'demajk9022';
 const BRANCH = process.env.GIF_GITHUB_BRANCH || 'main';
 const API = `https://api.github.com/repos/${OWNER}/${REPO}`;
+const ADMIN_ACCESS_CODE = (process.env.GIF_ADMIN_ACCESS_CODE || process.env.GIF_ACCESS_CODE || '').trim();
 
 function reply(body, status = 200) {
   return Response.json(body, {
@@ -31,6 +31,52 @@ function fail(message, status = 400) {
   throw error;
 }
 
+function safeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+  const hashA = createHash('sha256').update(a).digest();
+  const hashB = createHash('sha256').update(b).digest();
+  return timingSafeEqual(hashA, hashB);
+}
+
+function verifyRequestOrigin(request) {
+  const origin = request.headers.get('origin');
+  if (!origin) return;
+  const host = request.headers.get('host');
+  if (!host) return;
+  try {
+    const originHost = new URL(origin).host;
+    if (originHost !== host) {
+      fail('Cross-site request blocked.', 403);
+    }
+  } catch {
+    fail('Invalid request origin.', 403);
+  }
+}
+
+function extractAccessCode(request) {
+  const auth = request.headers.get('authorization') || '';
+  if (auth.toLowerCase().startsWith('bearer ')) {
+    return auth.slice(7).trim();
+  }
+  const custom = request.headers.get('x-admin-code') || request.headers.get('x-access-code');
+  if (custom) return custom.trim();
+  return '';
+}
+
+function requireAdmin(request) {
+  if (!ADMIN_ACCESS_CODE) {
+    fail('GIF Studio admin access code is not configured. Set GIF_ADMIN_ACCESS_CODE in your Netlify site settings.', 503);
+  }
+  const providedCode = extractAccessCode(request);
+  if (!providedCode) {
+    fail('Sign in with your admin access code to use GIF Studio.', 401);
+  }
+  if (!safeCompare(providedCode, ADMIN_ACCESS_CODE)) {
+    fail('Invalid admin access code.', 401);
+  }
+  if (request.method !== 'GET') verifyRequestOrigin(request);
+}
+
 async function jsonBody(request, max = 6 * 1024 * 1024) {
   const length = Number(request.headers.get('content-length') || 0);
   if (length > max) fail('That request is too large.', 413);
@@ -42,17 +88,6 @@ async function jsonBody(request, max = 6 * 1024 * 1024) {
     if (error.status) throw error;
     fail('Could not read the request data.');
   }
-}
-
-async function requireAdmin(request) {
-  let user;
-  try { user = await getUser(); } catch { user = null; }
-  if (!user) fail('Sign in to use GIF Studio.', 401);
-  if (!Array.isArray(user.roles) || !user.roles.includes('gif-admin')) {
-    fail('This account is not approved to manage GIFs.', 403);
-  }
-  if (request.method !== 'GET') verifyRequestOrigin(request);
-  return user;
 }
 
 function ipv4IsPublic(address) {
@@ -303,8 +338,11 @@ function slug(value) {
 
 export default async (request) => {
   try {
-    await requireAdmin(request);
+    requireAdmin(request);
     const route = new URL(request.url).pathname.split('/').filter(Boolean).at(-1);
+    if (route === 'auth') {
+      return reply({ ok: true, admin: true });
+    }
     if (request.method === 'GET' && route === 'catalog') {
       const catalog = await readCatalog();
       const pending = await pendingCatalogPullRequest();

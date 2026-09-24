@@ -1,17 +1,18 @@
 # Dismod GIF Studio (hosted)
 
-This is the hosted version of the GIF manager. It is a small Vite site with Netlify Functions. Netlify Identity gates the manager and every API route; publishing uses a fine-grained GitHub token held only in Netlify's server-side environment. It creates a pull request with the GIF and `community-assets/gifs/catalog.json` update. Squash-merge that PR to publish it to the Android picker; main-branch protection stays in place.
+This is the hosted version of the GIF manager. It is a small Vite site with Netlify Functions. An admin access code gates the manager and every API route; admin sessions never expire or log out automatically on authorized devices. Publishing uses a fine-grained GitHub token held only in Netlify's server-side environment. It creates a pull request with the GIF and `community-assets/gifs/catalog.json` update. Squash-merge that PR to publish it to the Android picker; main-branch protection stays in place.
 
 ## Deploy to Netlify
 
 1. Push/merge this folder to the GitHub repository, then create a Netlify site connected to `tonij7853-dotcom/demajk9022`.
 2. Set the site's **Base directory** to `tools/gif-catalog-manager/hosted`. The included `netlify.toml` supplies the build command, publish folder, and function folder.
-3. Enable Netlify Identity for that site. Set registration to **Invite only**; do not enable public sign-ups.
-4. In the Netlify site's environment variables, set `GIF_GITHUB_TOKEN` to a new fine-grained GitHub token scoped only to this repository with **Contents: Read and write** and **Pull requests: Read and write**. Set these optional values only if needed: `GIF_GITHUB_OWNER=tonij7853-dotcom`, `GIF_GITHUB_REPO=demajk9022`, `GIF_GITHUB_BRANCH=main`.
-5. In Identity > Users, invite your own email and each person you approve. Assign each approved account the exact role `gif-admin`. Accounts without that role can sign in but cannot use the studio API. Keep your Netlify team-owner account under your control; use the Netlify dashboard to add or remove the invited admins.
-6. Set the Identity invitation/confirmation redirect to your deployed site URL. After deploy, open the URL, accept the invite, and sign in.
+3. In the Netlify site's environment variables (**Site configuration > Environment variables**):
+   - Set `GIF_ADMIN_ACCESS_CODE` to your secret admin access code. Admins sign in with this access code; sessions stay permanently saved on their device until they click "Sign out".
+   - Set `GIF_GITHUB_TOKEN` to a new fine-grained GitHub token scoped only to this repository with **Contents: Read and write** and **Pull requests: Read and write**.
+   - Optional: set `GIF_GITHUB_OWNER=tonij7853-dotcom`, `GIF_GITHUB_REPO=demajk9022`, `GIF_GITHUB_BRANCH=main` if customized.
+4. After deploy, open the live site URL, enter your admin access code, and begin managing GIFs.
 
-The GitHub token is never put in the page, Android app, catalog, repository, or browser storage. Never paste it into chat or commit it. Since a GitHub token was pasted into this chat earlier, revoke that token and use a newly created fine-grained token in the Netlify environment settings.
+The GitHub token and admin access code are never committed or exposed in client code. Never paste them into chat or commit them. Since a GitHub token was pasted into this chat earlier, revoke that token and use a newly created fine-grained token in the Netlify environment settings.
 
 ### Branch protection
 
