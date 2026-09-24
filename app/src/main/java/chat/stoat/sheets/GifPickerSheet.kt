@@ -69,8 +69,10 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 private const val NETLIFY_GIF_CATALOG_URL =
-    "https://cheerful-pothos-8d3ee6.netlify.app/api/catalog"
+    "https://adminofdismod.netlify.app/api/catalog"
 private const val NETLIFY_GIF_ASSET_PREFIX =
+    "https://adminofdismod.netlify.app/api/raw/"
+private const val LEGACY_NETLIFY_GIF_ASSET_PREFIX =
     "https://cheerful-pothos-8d3ee6.netlify.app/api/raw/"
 private const val LEGACY_GIF_CATALOG_URL =
     "https://raw.githubusercontent.com/tonij7853-dotcom/demajk9022/main/community-assets/gifs/catalog.json"
@@ -459,5 +461,7 @@ private fun downloadGif(gif: GifItem, cacheDir: File): File {
 }
 
 private fun isAllowedGifUrl(url: String): Boolean =
-    (url.startsWith(NETLIFY_GIF_ASSET_PREFIX) || url.startsWith(LEGACY_GIF_ASSET_PREFIX)) &&
+    (url.startsWith(NETLIFY_GIF_ASSET_PREFIX) ||
+     url.startsWith(LEGACY_NETLIFY_GIF_ASSET_PREFIX) ||
+     url.startsWith(LEGACY_GIF_ASSET_PREFIX)) &&
         url.endsWith(".gif", ignoreCase = true)

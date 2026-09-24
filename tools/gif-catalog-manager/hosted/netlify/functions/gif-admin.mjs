@@ -10,7 +10,7 @@ const MAX_CATALOG = 300;
 const MAX_FRAMES = 240;
 const MAX_ANIMATION_PIXELS = 90_000_000;
 const ADMIN_ACCESS_CODE = (process.env.GIF_ADMIN_ACCESS_CODE || process.env.GIF_ACCESS_CODE || '').trim();
-const SITE_DOMAIN = (process.env.URL || 'https://cheerful-pothos-8d3ee6.netlify.app').replace(/\/+$/, '');
+const SITE_DOMAIN = (process.env.URL || 'https://adminofdismod.netlify.app').replace(/\/+$/, '');
 
 function reply(body, status = 200, extraHeaders = {}) {
   return Response.json(body, {
@@ -341,6 +341,20 @@ async function readCatalog() {
     const store = getGifStore();
     const catalog = await store.get('catalog.json', { type: 'json' });
     if (catalog && Array.isArray(catalog.gifs)) {
+      let changed = false;
+      for (const gif of catalog.gifs) {
+        if (gif.mediaUrl && gif.mediaUrl.includes('cheerful-pothos-8d3ee6.netlify.app')) {
+          gif.mediaUrl = gif.mediaUrl.replace('https://cheerful-pothos-8d3ee6.netlify.app', SITE_DOMAIN);
+          changed = true;
+        }
+        if (gif.previewUrl && gif.previewUrl.includes('cheerful-pothos-8d3ee6.netlify.app')) {
+          gif.previewUrl = gif.previewUrl.replace('https://cheerful-pothos-8d3ee6.netlify.app', SITE_DOMAIN);
+          changed = true;
+        }
+      }
+      if (changed) {
+        await store.setJSON('catalog.json', catalog).catch(() => {});
+      }
       return catalog;
     }
   } catch (error) {
