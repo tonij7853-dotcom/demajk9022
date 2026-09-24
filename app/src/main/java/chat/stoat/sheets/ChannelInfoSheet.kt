@@ -132,12 +132,22 @@ fun ChannelInfoSheet(channelId: String, onHideSheet: suspend () -> Unit) {
         else -> {}
     }
 
-    if (
+    val isServerOwner = if (channel.server != null) {
+        StoatAPI.serverCache[channel.server]?.owner == StoatAPI.selfId
+    } else {
+        true
+    }
+
+    val canInvite = if (channel.server != null) {
+        isServerOwner
+    } else {
         Roles.permissionFor(
             channel,
             StoatAPI.userCache[StoatAPI.selfId]
         ) has PermissionBit.InviteOthers
-    ) {
+    }
+
+    if (canInvite) {
         when (channel.channelType) {
             ChannelType.TextChannel, ChannelType.VoiceChannel -> {
                 SheetButton(
@@ -218,6 +228,7 @@ fun ChannelInfoSheet(channelId: String, onHideSheet: suspend () -> Unit) {
     )
 
     if (
+        isServerOwner &&
         (permissions has PermissionBit.ManageChannel || permissions has PermissionBit.ManageRole)
         && (channel.channelType != ChannelType.SavedMessages && channel.channelType != ChannelType.DirectMessage)
     ) {

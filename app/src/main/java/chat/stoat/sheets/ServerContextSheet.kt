@@ -204,36 +204,38 @@ fun ServerContextSheet(
             HorizontalDivider()
         }
 
-        SheetButton(
-            leadingContent = {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_identifier_copy_24dp),
-                    contentDescription = null
-                )
-            },
-            headlineContent = {
-                Text(
-                    text = stringResource(id = R.string.server_context_sheet_actions_copy_id)
-                )
-            },
-            onClick = {
-                if (server.id == null) return@SheetButton
+        if (server.owner == StoatAPI.selfId) {
+            SheetButton(
+                leadingContent = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_identifier_copy_24dp),
+                        contentDescription = null
+                    )
+                },
+                headlineContent = {
+                    Text(
+                        text = stringResource(id = R.string.server_context_sheet_actions_copy_id)
+                    )
+                },
+                onClick = {
+                    if (server.id == null) return@SheetButton
 
-                clipboardManager.setText(AnnotatedString(server.id!!))
+                    clipboardManager.setText(AnnotatedString(server.id!!))
 
-                if (Platform.needsShowClipboardNotification()) {
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.server_context_sheet_actions_copy_id_copied),
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    if (Platform.needsShowClipboardNotification()) {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.server_context_sheet_actions_copy_id_copied),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+
+                    coroutineScope.launch {
+                        onHideSheet()
+                    }
                 }
-
-                coroutineScope.launch {
-                    onHideSheet()
-                }
-            }
-        )
+            )
+        }
 
         SheetButton(
             leadingContent = {

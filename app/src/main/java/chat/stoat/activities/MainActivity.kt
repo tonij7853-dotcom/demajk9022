@@ -129,6 +129,8 @@ import chat.stoat.screens.settings.channel.ChannelSettingsHome
 import chat.stoat.screens.settings.channel.ChannelSettingsOverview
 import chat.stoat.screens.settings.channel.ChannelSettingsPermissions
 import chat.stoat.ui.theme.StoatTheme
+import chat.stoat.updater.DismodUpdateDialog
+import chat.stoat.updater.DismodUpdater
 import chat.stoat.voice.VoiceCallManager
 import io.ktor.client.request.get
 import io.sentry.android.core.SentryAndroid
@@ -226,7 +228,7 @@ class MainActivityViewModel(
             val valid = try {
                 StoatAPI.checkSessionToken(token)
             } catch (e: Throwable) {
-                false
+                true
             }
 
             if (canReachStoat && !valid) {
@@ -250,8 +252,7 @@ class MainActivityViewModel(
                     ).show()
                     return@launch startWithoutDestination()
                 } catch (e: Exception) {
-                    Log.e("MainActivity", "Failed to check onboarding state, could not log in", e)
-                    couldNotLogIn.emit(true)
+                    Log.e("MainActivity", "Failed to check onboarding state", e)
                 }
 
                 try {
@@ -264,8 +265,8 @@ class MainActivityViewModel(
                         startWithDestination("chat")
                     }
                 } catch (e: Exception) {
-                    Log.e("MainActivity", "Failed to login, could not log in", e)
-                    couldNotLogIn.emit(true)
+                    Log.e("MainActivity", "Failed to login immediately, proceeding to chat with auto-reconnect", e)
+                    startWithDestination("chat")
                 }
             }
         }
@@ -323,6 +324,7 @@ class MainActivityViewModel(
         Log.d("MainActivity", "Starting up")
         doPreStartupTasks()
         checkLoggedInState()
+        DismodUpdater.checkForUpdates(context, viewModelScope)
     }
 }
 
@@ -370,9 +372,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        SentryAndroid.init(this) { options ->
-            options.dsn = BuildConfig.SENTRY_DSN
-            options.release = BuildConfig.VERSION_NAME
+        if (BuildConfig.SENTRY_DSN.isNotBlank()) {
+            SentryAndroid.init(this) { options ->
+                options.dsn = BuildConfig.SENTRY_DSN
+                options.release = BuildConfig.VERSION_NAME
+            }
         }
 
         @Suppress("DEPRECATION") // We are fixing a bug in the splash screen
@@ -469,7 +473,7 @@ fun AppEntrypoint(
     onRetryConnection: () -> Unit,
     onUpdateNextDestination: (String) -> Unit = {}
 ) {
-    val showVoiceUI = VoiceCallManager.isSheetVisible
+    val showVoiceUI = false
     val hideVoiceUI = { VoiceCallManager.isSheetVisible = false }
     val disconnectVoice = { VoiceCallManager.leave() }
 
@@ -555,6 +559,11 @@ fun AppEntrypoint(
                         }
                     )
                 }
+
+                DismodUpdateDialog(
+                    state = DismodUpdater.state.collectAsState().value,
+                    onDismiss = { DismodUpdater.dismiss() }
+                )
 
                 NavHost(
                     navController = navController,
@@ -657,9 +666,7 @@ fun AppEntrypoint(
                                 )
                                 navController.navigate("default")
                             },
-                            onEnterVoiceUI = { channelId ->
-                                VoiceCallManager.openSheet(channelId)
-                            },
+                            onEnterVoiceUI = {},
                         )
                     }
 

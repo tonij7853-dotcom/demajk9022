@@ -211,6 +211,18 @@ fun ChannelSettingsOverview(
 ) {
     val currentChannel = StoatAPI.channelCache[channelId]
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val isServerChannel = currentChannel?.server != null
+    val isServerOwner = if (isServerChannel) {
+        StoatAPI.serverCache[currentChannel?.server]?.owner == StoatAPI.selfId
+    } else {
+        true
+    }
+
+    LaunchedEffect(isServerOwner) {
+        if (!isServerOwner) {
+            navController.popBackStack()
+        }
+    }
 
     LaunchedEffect(channelId) {
         viewModel.populateWithChannel(channelId)

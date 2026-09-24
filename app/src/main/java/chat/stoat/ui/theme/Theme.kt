@@ -124,16 +124,18 @@ private val DefaultColorScheme = darkColorScheme(
 
 val AmoledColorScheme = DefaultColorScheme.copy(
     background = Color(0xff000000),
-    onBackground = Color(0xffffffff),
-    surfaceVariant = Color(0xff131313),
-    onSurfaceVariant = Color(0xffffffff),
+    onBackground = Color(0xffedece8),
+    surfaceVariant = Color(0xff141413),
+    onSurfaceVariant = Color(0xffafaaa2),
     surface = Color(0xff000000),
-    onSurface = Color(0xffffffff),
+    onSurface = Color(0xffedece8),
     surfaceContainerLowest = Color(0xff000000),
-    surfaceContainerLow = Color(0xff000000),
-    surfaceContainer = Color(0xff000000),
-    surfaceContainerHigh = Color(0xff000000),
-    surfaceContainerHighest = Color(0xff000000),
+    surfaceContainerLow = Color(0xff0a0a09),
+    surfaceContainer = Color(0xff141413),
+    surfaceContainerHigh = Color(0xff1c1b1a),
+    surfaceContainerHighest = Color(0xff242322),
+    outline = Color(0xff3a3834),
+    outlineVariant = Color(0xff262523),
 )
 
 enum class Theme {
@@ -155,19 +157,11 @@ fun getColorScheme(
     val m3Supported = systemSupportsDynamicColors()
 
     val colorScheme = when {
-        m3Supported && requestedTheme == Theme.M3Dynamic && systemInDarkTheme -> dynamicDarkColorScheme(
-            context
-        )
-
-        m3Supported && requestedTheme == Theme.M3Dynamic && !systemInDarkTheme -> dynamicLightColorScheme(
-            context
-        )
-
+        m3Supported && requestedTheme == Theme.M3Dynamic -> dynamicDarkColorScheme(context)
         requestedTheme == Theme.Default -> DefaultColorScheme
         requestedTheme == Theme.Light -> LightColorScheme
         requestedTheme == Theme.Amoled -> AmoledColorScheme
-        requestedTheme == Theme.None && systemInDarkTheme -> DefaultColorScheme
-        requestedTheme == Theme.None && !systemInDarkTheme -> LightColorScheme
+        requestedTheme == Theme.None -> DefaultColorScheme
         else -> DefaultColorScheme
     }.copy()
 
@@ -222,10 +216,7 @@ fun systemSupportsDynamicColors(): Boolean {
 }
 
 fun getDefaultTheme(): Theme {
-    return when {
-        systemSupportsDynamicColors() -> Theme.M3Dynamic
-        else -> Theme.Default
-    }
+    return Theme.Default
 }
 
 fun isThemeDark(theme: Theme, systemIsDark: Boolean): Boolean {

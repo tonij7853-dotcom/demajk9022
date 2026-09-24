@@ -26,23 +26,19 @@ class ExperimentInstance(default: Boolean) {
  *  - All experiments can be disabled at once with a single toggle.
  */
 object Experiments {
-    val usePolar = ExperimentInstance(false)
-    val enableServerIdentityOptions = ExperimentInstance(false)
+    val usePolar = ExperimentInstance(true)
+    val enableServerIdentityOptions = ExperimentInstance(true)
 
     suspend fun hydrateWithKv() {
         val kvStorage = KVStorage(StoatApplication.instance)
 
-        if (BuildConfig.DEBUG) {
-            LoadedSettings.experimentsEnabled = true
-        } else {
-            LoadedSettings.experimentsEnabled = kvStorage.getBoolean("experimentsEnabled") == true
-        }
+        LoadedSettings.experimentsEnabled = true
 
         usePolar.setEnabled(
-            kvStorage.getBoolean("exp/usePolar") == true
+            kvStorage.getBoolean("exp/usePolar") ?: true
         )
         enableServerIdentityOptions.setEnabled(
-            kvStorage.getBoolean("exp/enableServerIdentityOptions") == true
+            kvStorage.getBoolean("exp/enableServerIdentityOptions") ?: true
         )
     }
 }

@@ -2,12 +2,17 @@ package chat.stoat.composables.chat
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.res.Configuration
 import android.icu.text.DateFormat
 import android.net.Uri
 import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.ui.tooling.preview.Preview
+import chat.stoat.api.settings.UserInterfaceFont
+import chat.stoat.ui.theme.StoatTheme
+import chat.stoat.ui.theme.Theme
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -687,6 +692,103 @@ fun Message(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun MessageRowSample(
+    authorName: String = "Claude",
+    timestamp: String = "Today at 3:42 PM",
+    content: String = "This is a quiet, calm message styled with warm typography.",
+    isOwn: Boolean = false,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .background(
+                    if (isOwn) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceContainerHigh
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = authorName.take(1),
+                style = MaterialTheme.typography.titleMedium,
+                color = if (isOwn) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = authorName,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = timestamp,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 11.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = content,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    lineHeight = 22.sp,
+                    fontSize = 15.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+@Preview(name = "Light Mode", showBackground = true)
+@Composable
+private fun MessageRowPreviewLight() {
+    StoatTheme(
+        requestedTheme = Theme.Light,
+        requestedUserInterfaceFont = UserInterfaceFont.Default
+    ) {
+        Column(
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.background)
+                .padding(8.dp)
+        ) {
+            MessageRowSample(authorName = "Claude", content = "Good afternoon! How can I help you today?")
+            MessageRowSample(authorName = "You", isOwn = true, content = "Working on the new quiet design.")
+        }
+    }
+}
+
+@Preview(name = "Dark Mode", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+private fun MessageRowPreviewDark() {
+    StoatTheme(
+        requestedTheme = Theme.Default,
+        requestedUserInterfaceFont = UserInterfaceFont.Default
+    ) {
+        Column(
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.background)
+                .padding(8.dp)
+        ) {
+            MessageRowSample(authorName = "Claude", content = "Good afternoon! How can I help you today?")
+            MessageRowSample(authorName = "You", isOwn = true, content = "Working on the new quiet design.")
         }
     }
 }

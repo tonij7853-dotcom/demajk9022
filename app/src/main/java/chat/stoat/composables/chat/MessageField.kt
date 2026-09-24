@@ -1,15 +1,19 @@
 package chat.stoat.composables.chat
 
+import android.content.res.Configuration
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandIn
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.content.ReceiveContentListener
 import androidx.compose.foundation.content.consume
@@ -23,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -30,18 +35,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.input.TextFieldState
-import androidx.compose.foundation.text.input.rememberTextFieldState
-import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -57,12 +61,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
@@ -76,31 +82,35 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import chat.stoat.R
 import chat.stoat.activities.StoatTweenFloat
 import chat.stoat.activities.StoatTweenInt
 import chat.stoat.api.internals.BrushCompat
-import chat.stoat.core.model.schemas.ChannelType
-import chat.stoat.core.model.schemas.Member
+import chat.stoat.api.settings.UserInterfaceFont
 import chat.stoat.composables.generic.RemoteImage
 import chat.stoat.composables.generic.UserAvatar
 import chat.stoat.composables.screens.chat.ChannelIcon
 import chat.stoat.core.model.data.STOAT_FILES
+import chat.stoat.core.model.schemas.ChannelType
+import chat.stoat.core.model.schemas.Member
+import chat.stoat.formatting.MarkdownFormattingHelper
+import chat.stoat.formatting.MarkdownVisualTransformation
 import chat.stoat.internals.Autocomplete
+import chat.stoat.ui.theme.ClaudeTokens
+import chat.stoat.ui.theme.StoatTheme
+import chat.stoat.ui.theme.Theme
 import kotlinx.coroutines.launch
-
-fun Pair<Int, Int>.asTextRange(): TextRange {
-    return TextRange(this.first, this.second)
-}
 
 private fun CharSequence.isEmptyOrOnlyNewlines(): Boolean {
     return this.lines().all { it.isEmpty() || it.all { c -> c == '\n' } }
 }
 
-private fun TextFieldState.lastWord(): String? {
+private fun TextFieldValue.lastWord(): String? {
     return this.text.substring(0, this.selection.min)
         .split(" ").lastOrNull()
 }
@@ -172,13 +182,17 @@ fun MessageField(
         ChannelType.SavedMessages -> R.string.message_field_placeholder_notes
     }
 
-    val sendButtonVisible =
-        (!valueIsBlank || forceSendButton) && !disabled && !failedValidation
+    val sendButtonVisible = (!valueIsBlank || forceSendButton) && !disabled && !failedValidation
 
     val focusManager = LocalFocusManager.current
     val focusRequester = remember { FocusRequester() }
 
-    var selection by remember { mutableStateOf(0 to 0) }
+    var textFieldValue by remember {
+        mutableStateOf(TextFieldValue(text = initialValue, selection = TextRange(initialValue.length)))
+    }
+
+    var showFormattingToolbar by remember { mutableStateOf(false) }
+
     val autocompleteSuggestions = remember { mutableStateListOf<AutocompleteSuggestion>() }
     val autocompleteSuggestionState = rememberLazyListState()
 
@@ -194,56 +208,42 @@ fun MessageField(
         }
     }
 
-    var textFieldState = rememberTextFieldState(
-        initialText = initialValue,
-        initialSelection = selection.asTextRange()
-    )
-
     LaunchedEffect(initialValue, initialValueDirtyMarker) {
-        textFieldState.setTextAndPlaceCursorAtEnd(initialValue)
+        if (initialValue != textFieldValue.text) {
+            textFieldValue = TextFieldValue(text = initialValue, selection = TextRange(initialValue.length))
+        }
     }
 
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(textFieldState.text) {
-        onValueChange(textFieldState.text.toString())
+    LaunchedEffect(textFieldValue.text) {
+        onValueChange(textFieldValue.text)
 
         scope.launch {
             autocompleteSuggestionState.animateScrollToItem(0)
         }
         autocompleteSuggestions.clear()
 
-        if (textFieldState.text.isNotBlank() &&
-            (textFieldState.selection.min == textFieldState.selection.max)
+        if (textFieldValue.text.isNotBlank() &&
+            (textFieldValue.selection.min == textFieldValue.selection.max)
         ) {
-            val lastWord = textFieldState.lastWord()
+            val lastWord = textFieldValue.lastWord()
             if (lastWord != null) {
                 when {
                     lastWord.startsWith(':') && !lastWord.endsWith(':') -> {
-                        autocompleteSuggestions.addAll(
-                            Autocomplete.emoji(lastWord.substring(1))
-                        )
+                        autocompleteSuggestions.addAll(Autocomplete.emoji(lastWord.substring(1)))
                     }
-
                     lastWord.startsWith('@') -> {
                         if (channelId != null && serverId != null) {
                             autocompleteSuggestions.addAll(
-                                Autocomplete.userOrRole(
-                                    channelId,
-                                    serverId,
-                                    lastWord.substring(1)
-                                )
+                                Autocomplete.userOrRole(channelId, serverId, lastWord.substring(1))
                             )
                         }
                     }
-
                     lastWord.startsWith('#') -> {
                         if (serverId != null) {
                             autocompleteSuggestions.addAll(
-                                Autocomplete.channel(
-                                    serverId,
-                                    lastWord.substring(1)
-                                )
+                                Autocomplete.channel(serverId, lastWord.substring(1))
                             )
                         }
                     }
@@ -260,36 +260,48 @@ fun MessageField(
         }
     }
 
+    fun replaceWord(replacement: String) {
+        val lastWordStartsAt = textFieldValue.text
+            .substring(0, textFieldValue.selection.max)
+            .lastWordStartsAt()
+        val replaceStart = if (lastWordStartsAt == -1) 0 else (lastWordStartsAt + 1)
+        val replaceEnd = textFieldValue.selection.max
+        val newText = textFieldValue.text.replaceRange(replaceStart, replaceEnd, replacement)
+        val newCursor = replaceStart + replacement.length
+        textFieldValue = TextFieldValue(text = newText, selection = TextRange(newCursor))
+    }
+
+    val visualTransformation = remember(MaterialTheme.colorScheme.onSurface) {
+        MarkdownVisualTransformation(
+            markerColor = Color(0x66888888),
+            codeBackground = Color(0x1F888888),
+            quoteColor = Color(0xAA888888)
+        )
+    }
+
     Column(
-        modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainer)
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
+        // Autocomplete suggestions
         AnimatedVisibility(
             visible = autocompleteSuggestions.isNotEmpty(),
-            enter = expandIn(initialSize = { full ->
-                IntSize(
-                    full.width,
-                    0
-                )
-            }),
-            exit = shrinkOut(targetSize = { full ->
-                IntSize(
-                    full.width,
-                    0
-                )
-            })
+            enter = expandIn(initialSize = { full -> IntSize(full.width, 0) }),
+            exit = shrinkOut(targetSize = { full -> IntSize(full.width, 0) })
         ) {
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 state = autocompleteSuggestionState
             ) {
                 items(autocompleteSuggestions.size, key = {
                     when (val item = autocompleteSuggestions[it]) {
-                        is AutocompleteSuggestion.User -> item.user.id!!
-                        is AutocompleteSuggestion.Channel -> item.channel.id!!
+                        is AutocompleteSuggestion.User -> item.user.id ?: it.toString()
+                        is AutocompleteSuggestion.Channel -> item.channel.id ?: it.toString()
                         is AutocompleteSuggestion.Emoji -> item.shortcode
                         is AutocompleteSuggestion.Role -> item.id
                         is AutocompleteSuggestion.MassMention -> item.content
@@ -299,58 +311,32 @@ fun MessageField(
                         is AutocompleteSuggestion.User -> {
                             SuggestionChip(
                                 onClick = {
-                                    textFieldState.edit {
-                                        val lastWordStartsAt =
-                                            textFieldState.text
-                                                .substring(0, textFieldState.selection.max)
-                                                .lastWordStartsAt()
-                                        replace(
-                                            if (lastWordStartsAt == -1) 0 else (lastWordStartsAt + 1),
-                                            textFieldState.selection.max,
-                                            "@${item.user.username}#${item.user.discriminator} "
-                                        )
-                                    }
+                                    replaceWord("@${item.user.username}#${item.user.discriminator} ")
                                 },
                                 label = { Text("@${item.user.username}#${item.user.discriminator}") },
                                 icon = {
                                     UserAvatar(
-                                        username = item.user.username
-                                            ?: stringResource(R.string.unknown),
+                                        username = item.user.username ?: stringResource(R.string.unknown),
                                         userId = item.user.id ?: "",
                                         avatar = item.user.avatar,
-                                        rawUrl = item.member?.avatar?.id?.let {
-                                            "$STOAT_FILES/avatars/$it"
-                                        },
+                                        rawUrl = item.member?.avatar?.id?.let { "$STOAT_FILES/avatars/$it" },
                                         size = SuggestionChipDefaults.IconSize,
                                     )
                                 },
-                                modifier = Modifier
-                                    .animateItem()
+                                modifier = Modifier.animateItem()
                             )
                         }
 
                         is AutocompleteSuggestion.Role -> {
                             SuggestionChip(
                                 onClick = {
-                                    textFieldState.edit {
-                                        val lastWordStartsAt =
-                                            textFieldState.text
-                                                .substring(0, textFieldState.selection.max)
-                                                .lastWordStartsAt()
-                                        replace(
-                                            if (lastWordStartsAt == -1) 0 else (lastWordStartsAt + 1),
-                                            textFieldState.selection.max,
-                                            "<%${item.id}> "
-                                        )
-                                    }
+                                    replaceWord("<%${item.id}> ")
                                 },
                                 label = {
                                     Text(
                                         text = "@${item.role.name}",
                                         style = item.role.colour?.let {
-                                            LocalTextStyle.current.copy(
-                                                brush = BrushCompat.parseColour(it)
-                                            )
+                                            LocalTextStyle.current.copy(brush = BrushCompat.parseColour(it))
                                         } ?: LocalTextStyle.current
                                     )
                                 },
@@ -366,37 +352,19 @@ fun MessageField(
                                             .align(Alignment.CenterHorizontally),
                                     )
                                 },
-                                modifier = Modifier
-                                    .animateItem()
+                                modifier = Modifier.animateItem()
                             )
                         }
 
                         is AutocompleteSuggestion.Channel -> {
                             SuggestionChip(
                                 onClick = {
-                                    textFieldState.edit {
-                                        val lastWordStartsAt =
-                                            textFieldState.text
-                                                .substring(0, textFieldState.selection.max)
-                                                .lastWordStartsAt()
-
-                                        val replacement =
-                                            if (item.channel.name?.contains(
-                                                    " ",
-                                                    ignoreCase = true
-                                                ) == true
-                                            ) {
-                                                "<#${item.channel.id}> "
-                                            } else {
-                                                "#${item.channel.name} "
-                                            }
-
-                                        replace(
-                                            if (lastWordStartsAt == -1) 0 else (lastWordStartsAt + 1),
-                                            textFieldState.selection.max,
-                                            replacement
-                                        )
+                                    val replacement = if (item.channel.name?.contains(" ", ignoreCase = true) == true) {
+                                        "<#${item.channel.id}> "
+                                    } else {
+                                        "#${item.channel.name} "
                                     }
+                                    replaceWord(replacement)
                                 },
                                 label = { Text("#${item.channel.name}") },
                                 icon = {
@@ -407,25 +375,14 @@ fun MessageField(
                                         )
                                     }
                                 },
-                                modifier = Modifier
-                                    .animateItem()
+                                modifier = Modifier.animateItem()
                             )
                         }
 
                         is AutocompleteSuggestion.Emoji -> {
                             SuggestionChip(
                                 onClick = {
-                                    textFieldState.edit {
-                                        val lastWordStartsAt =
-                                            textFieldState.text
-                                                .substring(0, textFieldState.selection.max)
-                                                .lastWordStartsAt()
-                                        replace(
-                                            if (lastWordStartsAt == -1) 0 else (lastWordStartsAt + 1),
-                                            textFieldState.selection.max,
-                                            item.shortcode + " "
-                                        )
-                                    }
+                                    replaceWord("${item.shortcode} ")
                                 },
                                 label = {
                                     if (item.custom != null) {
@@ -461,17 +418,7 @@ fun MessageField(
                         is AutocompleteSuggestion.MassMention -> {
                             SuggestionChip(
                                 onClick = {
-                                    textFieldState.edit {
-                                        val lastWordStartsAt =
-                                            textFieldState.text
-                                                .substring(0, textFieldState.selection.max)
-                                                .lastWordStartsAt()
-                                        replace(
-                                            if (lastWordStartsAt == -1) 0 else (lastWordStartsAt + 1),
-                                            textFieldState.selection.max,
-                                            "@${item.content} "
-                                        )
-                                    }
+                                    replaceWord("@${item.content} ")
                                 },
                                 label = { Text("@${item.content}") },
                                 icon = {
@@ -490,40 +437,96 @@ fun MessageField(
                 }
             }
         }
+
+        // Formatting toolbar (expands when "Aa" is clicked)
+        AnimatedVisibility(
+            visible = showFormattingToolbar,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            FormattingToolbar(
+                onBold = {
+                    val res = MarkdownFormattingHelper.toggleBold(textFieldValue.text, textFieldValue.selection)
+                    textFieldValue = TextFieldValue(res.text, res.selection)
+                },
+                onItalic = {
+                    val res = MarkdownFormattingHelper.toggleItalic(textFieldValue.text, textFieldValue.selection)
+                    textFieldValue = TextFieldValue(res.text, res.selection)
+                },
+                onHeading = {
+                    val res = MarkdownFormattingHelper.toggleHeading(textFieldValue.text, textFieldValue.selection)
+                    textFieldValue = TextFieldValue(res.text, res.selection)
+                },
+                onCode = {
+                    val res = MarkdownFormattingHelper.toggleCode(textFieldValue.text, textFieldValue.selection)
+                    textFieldValue = TextFieldValue(res.text, res.selection)
+                },
+                onQuote = {
+                    val res = MarkdownFormattingHelper.toggleQuote(textFieldValue.text, textFieldValue.selection)
+                    textFieldValue = TextFieldValue(res.text, res.selection)
+                },
+                onStrikethrough = {
+                    val res = MarkdownFormattingHelper.toggleStrikethrough(textFieldValue.text, textFieldValue.selection)
+                    textFieldValue = TextFieldValue(res.text, res.selection)
+                },
+                onLink = {
+                    val res = MarkdownFormattingHelper.insertLink(textFieldValue.text, textFieldValue.selection)
+                    textFieldValue = TextFieldValue(res.text, res.selection)
+                },
+                modifier = Modifier
+                    .clip(ClaudeTokens.Shapes.medium)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .padding(horizontal = 4.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.heightIn(min = 4.dp))
+
+        // Floating rounded composer body
         Row(
-            modifier = modifier
-                .background(MaterialTheme.colorScheme.surfaceContainer),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(ClaudeTokens.Shapes.composerShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                .border(
+                    width = ClaudeTokens.Borders.hairline,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    shape = ClaudeTokens.Shapes.composerShape
+                )
+                .padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Note: There is an assumption that editing a message implies canAttach = false and editMode = true
+            // Leading "+" button with touch target >= 48dp
             AnimatedVisibility(canAttach) {
-                Icon(
-                    Icons.Default.Add,
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    contentDescription = stringResource(id = R.string.add_attachment_alt),
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .size(32.dp)
-                        .clickable {
-                            if (!editMode) {
-                                // hide keyboard because it's annoying
-                                focusManager.clearFocus()
-                                onAddAttachment()
-                            }
+                IconButton(
+                    onClick = {
+                        if (!editMode) {
+                            focusManager.clearFocus()
+                            onAddAttachment()
                         }
-                        .padding(4.dp)
+                    },
+                    modifier = Modifier
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                         .testTag("add_attachment")
-                )
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        contentDescription = stringResource(id = R.string.add_attachment_alt),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
 
+            // Text input with live markdown styling (VisualTransformation)
             BasicTextField(
-                state = textFieldState,
+                value = textFieldValue,
+                onValueChange = { textFieldValue = it },
+                visualTransformation = visualTransformation,
                 textStyle = LocalTextStyle.current.copy(
-                    color = if (failedValidation) {
-                        MaterialTheme.colorScheme.error
-                    } else LocalContentColor.current
+                    color = if (failedValidation) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 keyboardOptions = KeyboardOptions.Default.copy(
@@ -534,47 +537,46 @@ fun MessageField(
                 ),
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(max = 128.dp)
+                    .heightIn(min = 40.dp, max = 136.dp)
                     .verticalScroll(rememberScrollState())
-                    .onFocusChanged {
-                        onFocusChange(it.isFocused)
-                    }
+                    .onFocusChanged { onFocusChange(it.isFocused) }
                     .focusRequester(focusRequester)
                     .contentReceiver(receiveContentListener)
                     .onKeyEvent {
                         if (it.type == KeyEventType.KeyUp) {
-                            when {
-                                it.key == Key.Enter &&
-                                        !it.isShiftPressed &&
-                                        !it.isAltPressed &&
-                                        it.isCtrlPressed &&
-                                        !it.isMetaPressed -> {
-                                    if (sendEnabled) {
-                                        onSendMessage()
-                                    }
-                                    return@onKeyEvent true
-                                }
-
-                                it.key == Key.Escape &&
-                                        !it.isShiftPressed &&
-                                        !it.isAltPressed &&
-                                        !it.isCtrlPressed &&
-                                        !it.isMetaPressed -> {
-                                    cancelEdit()
-                                    return@onKeyEvent true
-                                }
+                            // Hardware shortcut: Ctrl/Cmd + B -> Bold
+                            if ((it.isCtrlPressed || it.isMetaPressed) && it.key == Key.B) {
+                                val res = MarkdownFormattingHelper.toggleBold(textFieldValue.text, textFieldValue.selection)
+                                textFieldValue = TextFieldValue(res.text, res.selection)
+                                return@onKeyEvent true
+                            }
+                            // Hardware shortcut: Ctrl/Cmd + I -> Italic
+                            if ((it.isCtrlPressed || it.isMetaPressed) && it.key == Key.I) {
+                                val res = MarkdownFormattingHelper.toggleItalic(textFieldValue.text, textFieldValue.selection)
+                                textFieldValue = TextFieldValue(res.text, res.selection)
+                                return@onKeyEvent true
+                            }
+                            // Hardware shortcut: Ctrl/Cmd + Enter -> Send
+                            if ((it.isCtrlPressed || it.isMetaPressed) && it.key == Key.Enter && !it.isShiftPressed && !it.isAltPressed) {
+                                if (sendEnabled) onSendMessage()
+                                return@onKeyEvent true
+                            }
+                            // Escape -> Cancel edit
+                            if (it.key == Key.Escape) {
+                                cancelEdit()
+                                return@onKeyEvent true
                             }
                         }
-
-                        return@onKeyEvent false
+                        false
                     },
-                decorator = { innerTextField ->
-                    Box(Modifier.padding(horizontal = 16.dp, vertical = 18.dp)) {
-                        if (textFieldState.text.isEmptyOrOnlyNewlines()) {
+                decorationBox = { innerTextField ->
+                    Box(Modifier.padding(horizontal = 8.dp, vertical = 12.dp)) {
+                        if (textFieldValue.text.isEmptyOrOnlyNewlines()) {
                             Text(
                                 stringResource(placeholderResource, channelName),
                                 style = LocalTextStyle.current.copy(
-                                    color = LocalContentColor.current.copy(alpha = 0.5f)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    fontSize = 15.sp
                                 ),
                                 modifier = Modifier.align(Alignment.CenterStart)
                             )
@@ -584,86 +586,118 @@ fun MessageField(
                 }
             )
 
-            Icon(
-                painter = painterResource(R.drawable.ic_mood_24dp),
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                contentDescription = stringResource(id = R.string.pick_emoji_alt),
+            // "Aa" Text Formatting toggle button with touch target >= 48dp
+            IconButton(
+                onClick = { showFormattingToolbar = !showFormattingToolbar },
+                modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            ) {
+                Text(
+                    text = "Aa",
+                    fontWeight = if (showFormattingToolbar) FontWeight.Bold else FontWeight.Medium,
+                    fontSize = 15.sp,
+                    color = if (showFormattingToolbar) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Emoji button with touch target >= 48dp
+            IconButton(
+                onClick = {
+                    focusManager.clearFocus()
+                    onPickEmoji()
+                },
                 modifier = Modifier
-                    .clip(CircleShape)
-                    .size(32.dp)
-                    .clickable {
-                        focusManager.clearFocus()
-                        onPickEmoji()
-                    }
-                    .padding(4.dp)
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                     .testTag("pick_emoji")
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            AnimatedVisibility(
-                sendButtonVisible,
-                enter = expandIn(initialSize = { full ->
-                    IntSize(
-                        0,
-                        full.height
-                    )
-                }) + slideInHorizontally(
-                    animationSpec = StoatTweenInt,
-                    initialOffsetX = { -it }
-                ) + fadeIn(animationSpec = StoatTweenFloat),
-                exit = shrinkOut(targetSize = { full ->
-                    IntSize(
-                        0,
-                        full.height
-                    )
-                }) + slideOutHorizontally(
-                    animationSpec = StoatTweenInt,
-                    targetOffsetX = { it }
-                ) + fadeOut(animationSpec = StoatTweenFloat)
             ) {
                 Icon(
-                    painter = when {
-                        editMode -> painterResource(R.drawable.ic_edit_24dp)
-                        else -> painterResource(R.drawable.ic_send_24dp)
-                    },
-                    tint = if (sendEnabled) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                    },
-                    contentDescription = stringResource(id = R.string.send_alt),
-                    modifier = Modifier
-                        .padding(end = 8.dp)
-                        .clip(CircleShape)
-                        .clickable(enabled = sendEnabled) { onSendMessage() }
-                        .size(32.dp)
-                        .padding(4.dp)
-                        .testTag("send_message")
+                    painter = painterResource(R.drawable.ic_mood_24dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    contentDescription = stringResource(id = R.string.pick_emoji_alt),
+                    modifier = Modifier.size(22.dp)
                 )
+            }
+
+            // Terracotta Send button with touch target >= 48dp
+            AnimatedVisibility(
+                visible = sendButtonVisible,
+                enter = expandIn(initialSize = { full -> IntSize(0, full.height) }) +
+                        slideInHorizontally(animationSpec = StoatTweenInt, initialOffsetX = { -it }) +
+                        fadeIn(animationSpec = StoatTweenFloat),
+                exit = shrinkOut(targetSize = { full -> IntSize(0, full.height) }) +
+                        slideOutHorizontally(animationSpec = StoatTweenInt, targetOffsetX = { it }) +
+                        fadeOut(animationSpec = StoatTweenFloat)
+            ) {
+                IconButton(
+                    onClick = { if (sendEnabled) onSendMessage() },
+                    enabled = sendEnabled,
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                        .testTag("send_message")
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (sendEnabled) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = when {
+                                editMode -> painterResource(R.drawable.ic_edit_24dp)
+                                else -> painterResource(R.drawable.ic_send_24dp)
+                            },
+                            tint = if (sendEnabled) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            contentDescription = stringResource(id = R.string.send_alt),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-@Preview
+@Preview(name = "Composer Light", showBackground = true)
 @Composable
-fun NativeMessageFieldPreview() {
-    MessageField(
-        initialValue = "Hello world!",
-        onValueChange = {},
-        onAddAttachment = {},
-        onCommitAttachment = {},
-        onPickEmoji = {},
-        onSendMessage = {},
-        channelType = ChannelType.DirectMessage,
-        channelName = "Test",
-        modifier = Modifier,
-        forceSendButton = false,
-        canAttach = true,
-        disabled = false,
-        editMode = false,
-        cancelEdit = {},
-        onFocusChange = {},
-    )
+fun MessageFieldLightPreview() {
+    StoatTheme(requestedTheme = Theme.Light, requestedUserInterfaceFont = UserInterfaceFont.Default) {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            MessageField(
+                initialValue = "Hello world! Check out **Claude** style.",
+                onValueChange = {},
+                onAddAttachment = {},
+                onCommitAttachment = {},
+                onPickEmoji = {},
+                onSendMessage = {},
+                channelType = ChannelType.DirectMessage,
+                channelName = "General",
+                sendEnabled = true
+            )
+        }
+    }
+}
+
+@Preview(name = "Composer Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+fun MessageFieldDarkPreview() {
+    StoatTheme(requestedTheme = Theme.Default, requestedUserInterfaceFont = UserInterfaceFont.Default) {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            MessageField(
+                initialValue = "Drafting a quiet *terracotta* message...",
+                onValueChange = {},
+                onAddAttachment = {},
+                onCommitAttachment = {},
+                onPickEmoji = {},
+                onSendMessage = {},
+                channelType = ChannelType.TextChannel,
+                channelName = "general",
+                sendEnabled = true
+            )
+        }
+    }
 }

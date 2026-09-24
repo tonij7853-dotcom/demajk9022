@@ -340,15 +340,8 @@ fun ChannelSideDrawer(
                 val serverHasUnread =
                     serverInList.id?.let { srvId -> StoatAPI.unreads.serverHasUnread(srvId) }
                         ?: false
-                val voiceParticipants = serverInList.channels.orEmpty().flatMap { channelId ->
-                    StoatAPI.voiceStateCache[channelId]?.participants.orEmpty()
-                }
-                val hasScreenShare = voiceParticipants.any { it.screensharing }
-                val voiceBadgeIcon = when {
-                    hasScreenShare -> R.drawable.ic_screen_share_24dp
-                    voiceParticipants.isNotEmpty() -> R.drawable.ic_volume_up_24dp
-                    else -> null
-                }
+                val hasScreenShare = false
+                val voiceBadgeIcon: Int? = null
                 val leftIndicatorHeight = animateDpAsState(
                     targetValue = if (serverInList.id == currentServer) 32.dp
                     else if (serverHasUnread) 8.dp
@@ -874,7 +867,7 @@ fun ColumnScope.ServerChannelListRenderer(
                             channelOrCat.channel.id!!,
                             serverId
                         ),
-                        showVoiceParticipants = true,
+                        showVoiceParticipants = false,
                         onOpenChannelContextSheet = onOpenChannelContextSheet
                     )
                 }
@@ -934,9 +927,9 @@ fun ChannelItem(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start),
                 modifier = Modifier
-                    .padding(start = 8.dp, end = 8.dp)
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
                     .clip(
-                        CircleShape
+                        androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
                     )
                     .combinedClickable(
                         onLongClickLabel = stringResource(R.string.channel_context_sheet_open),
@@ -965,7 +958,7 @@ fun ChannelItem(
                             Modifier
                         }
                     )
-                    .padding(16.dp)
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
                     .fillMaxWidth()) {
                 when (iconType) {
                     is ChannelItemIconType.Channel -> {
@@ -1010,29 +1003,6 @@ fun ChannelItem(
                             .requiredSize(8.dp)
                     )
                 }
-                channel.voice?.maxUsers?.let { maxUsers ->
-                    val participantCount = channel.id
-                        ?.let { StoatAPI.voiceStateCache[it]?.participants?.size }
-                        ?: 0
-                    Text(
-                        text = "$participantCount/$maxUsers",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontFamily = FragmentMono
-                        ),
-                        color = LocalContentColor.current.copy(alpha = 0.7f),
-                        maxLines = 1
-                    )
-                }
-            }
-
-            if (showVoiceParticipants &&
-                channel.channelType == ChannelType.TextChannel &&
-                channel.voice != null
-            ) {
-                VoiceChannelParticipantPreview(
-                    channel = channel,
-                    modifier = if (isMuted) Modifier.alpha(0.5f) else Modifier
-                )
             }
         }
     }
@@ -1149,11 +1119,14 @@ fun CategoryItem(
     category: Category
 ) {
     Text(
-        text = category.title ?: stringResource(R.string.unknown),
-        style = MaterialTheme.typography.labelLarge,
-        fontSize = 16.sp,
+        text = (category.title ?: stringResource(R.string.unknown)).uppercase(),
+        style = MaterialTheme.typography.labelSmall.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.sp
+        ),
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
         modifier = Modifier.padding(
-            start = 24.dp, end = 24.dp, top = 24.dp, bottom = 16.dp
+            start = 16.dp, end = 16.dp, top = 20.dp, bottom = 6.dp
         )
     )
 }

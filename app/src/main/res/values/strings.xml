@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name" translatable="false">Stoat</string>
+    <string name="app_name" translatable="false">Dismod</string>
 
     <string name="back">← Back</string>
     <string name="next">Next →</string>
@@ -986,4 +986,8 @@
     <string name="changelog_header">What\'s new</string>
     <string name="changelog_load_error">There was an error loading the changelog.</string>
     <string name="changelog_retry">Retry</string>
+
+    <string name="channel_action_details">Details</string>
+    <string name="channel_empty_welcome">Welcome to %1$s</string>
+    <string name="channel_empty_subtitle">This is the start of the conversation.</string>
 </resources>

@@ -558,7 +558,7 @@ fun ChatRouterScreen(
                     }
 
                     is Action.OpenVoiceChannelOverlay -> {
-                        onEnterVoiceUI(action.channelId)
+                        // Voice calling disabled
                     }
 
                     is Action.OpenWebhookSheet -> {

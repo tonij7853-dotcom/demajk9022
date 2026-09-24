@@ -53,6 +53,19 @@ fun ChannelSettingsHome(navController: NavController, channelId: String) {
     val channel = StoatAPI.channelCache[channelId]
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val permissions by rememberChannelPermissions(channelId)
+    val isServerChannel = channel?.server != null
+    val isServerOwner = if (isServerChannel) {
+        StoatAPI.serverCache[channel?.server]?.owner == StoatAPI.selfId
+    } else {
+        true
+    }
+
+    androidx.compose.runtime.LaunchedEffect(isServerOwner) {
+        if (!isServerOwner) {
+            navController.popBackStack()
+        }
+    }
+
     var showDeletionConfirmation by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -125,7 +138,7 @@ fun ChannelSettingsHome(navController: NavController, channelId: String) {
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    if (permissions.hasPermission(PermissionBit.ManageChannel)) {
+                    if (isServerOwner && permissions.hasPermission(PermissionBit.ManageChannel)) {
                         ListItem(
                             headlineContent = {
                                 Text(
@@ -149,7 +162,7 @@ fun ChannelSettingsHome(navController: NavController, channelId: String) {
                     }
 
                     // TODO Implement permissions UI and remove the predicate check
-                    if (permissions.hasPermission(PermissionBit.ManageRole) && FeatureFlags.labsAccessControlGranted) {
+                    if (isServerOwner && permissions.hasPermission(PermissionBit.ManageRole) && FeatureFlags.labsAccessControlGranted) {
                         ListItem(
                             headlineContent = {
                                 Text(
@@ -172,7 +185,7 @@ fun ChannelSettingsHome(navController: NavController, channelId: String) {
                         )
                     }
 
-                    if (permissions.hasPermission(PermissionBit.ManageChannel) && channel.channelType != ChannelType.DirectMessage && channel.channelType != ChannelType.Group) {
+                    if (isServerOwner && permissions.hasPermission(PermissionBit.ManageChannel) && channel.channelType != ChannelType.DirectMessage && channel.channelType != ChannelType.Group) {
                         ListItem(
                             headlineContent = {
                                 CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.error) {

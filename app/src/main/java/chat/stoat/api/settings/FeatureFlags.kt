@@ -35,27 +35,17 @@ sealed class UserCardsVariates {
 object FeatureFlags {
     @FeatureFlag("LabsAccessControl")
     var labsAccessControl by mutableStateOf<LabsAccessControlVariates>(
-        LabsAccessControlVariates.Restricted {
-            StoatAPI.selfId == SpecialUsers.JENNIFER
-        }
+        LabsAccessControlVariates.Restricted { true }
     )
 
     val labsAccessControlGranted: Boolean
-        get() = when (labsAccessControl) {
-            is LabsAccessControlVariates.Restricted -> (labsAccessControl as LabsAccessControlVariates.Restricted).predicate()
-        }
+        get() = true
 
     @FeatureFlag("UserCards")
     var userCards by mutableStateOf<UserCardsVariates>(
-        UserCardsVariates.Restricted {
-            StoatAPI.selfId?.endsWith("Z") == true
-        }
+        UserCardsVariates.Enabled
     )
 
     val userCardsGranted: Boolean
-        get() = when (userCards) {
-            is UserCardsVariates.Enabled -> true
-            is UserCardsVariates.Restricted -> (userCards as UserCardsVariates.Restricted).predicate()
-        }
-
+        get() = true
 }

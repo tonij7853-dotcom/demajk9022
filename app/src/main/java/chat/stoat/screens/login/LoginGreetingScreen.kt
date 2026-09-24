@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.LocalContentColor
@@ -71,13 +73,13 @@ fun LoginGreetingScreen(navController: NavController) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Image(
-                painter = painterResource(id = R.drawable.stoat_logo_white),
-                colorFilter = ColorFilter.tint(LocalContentColor.current),
-                contentDescription = "Stoat",
+                painter = painterResource(id = R.drawable.dismod_logo),
+                contentDescription = "Dismod",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
-                    .height(100.dp)
-                    .padding(bottom = 15.dp)
+                    .size(96.dp)
+                    .padding(bottom = 10.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
                     .combinedClickable(
                         interactionSource = remember(::MutableInteractionSource),
                         indication = null,

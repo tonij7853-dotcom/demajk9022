@@ -16,8 +16,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import chat.stoat.updater.DismodUpdater
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -116,37 +120,46 @@ fun AboutScreen(navController: NavController, viewModel: AboutViewModel = viewMo
                 modifier = Modifier
                     .padding(top = 16.dp)
                     .fillMaxWidth()
-                    .padding(vertical = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                    .padding(vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Image(
-                    painter = painterResource(R.drawable.stoat_logo_white),
-                    contentDescription = stringResource(R.string.about_full_name),
-                    colorFilter = ColorFilter.tint(LocalContentColor.current),
+                    painter = painterResource(R.drawable.dismod_logo),
+                    contentDescription = "Dismod Logo",
                     modifier = Modifier
-                        .width(250.dp)
+                        .size(88.dp)
+                        .clip(RoundedCornerShape(22.dp))
                 )
-
-                Spacer(modifier = Modifier.height(16.dp))
 
                 Column(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = stringResource(R.string.about_full_name),
-                        style = MaterialTheme.typography.titleLarge,
+                        text = "Dismod",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center
                     )
 
                     Text(
-                        text = BuildConfig.VERSION_NAME,
+                        text = "Version ${BuildConfig.VERSION_NAME}",
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Normal
                         ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
                     )
+                }
+
+                FilledTonalButton(
+                    onClick = {
+                        DismodUpdater.checkForUpdates(context, scope, notifyIfNoUpdate = true)
+                    },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Check for Updates")
                 }
             }
 

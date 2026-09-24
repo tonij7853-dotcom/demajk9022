@@ -245,85 +245,108 @@ val GoogleSansFlex = FontFamily(
     )
 )
 
+val Newsreader = FontFamily(
+    Font(R.font.newsreader, FontWeight.Normal),
+    Font(R.font.newsreader, FontWeight.Medium),
+    Font(R.font.newsreader, FontWeight.SemiBold),
+    Font(R.font.newsreader, FontWeight.Bold),
+    Font(R.font.newsreader, FontWeight.ExtraBold),
+)
+
 val StoatTypography = Typography(
     displayLarge = TextStyle(
-        fontFamily = InterDisplay,
-        fontWeight = FontWeight.Black,
-        fontSize = 57.sp
+        fontFamily = Newsreader,
+        fontWeight = FontWeight.Bold,
+        fontSize = 57.sp,
+        lineHeight = 64.sp
     ),
     displayMedium = TextStyle(
-        fontFamily = InterDisplay,
-        fontWeight = FontWeight.ExtraBold,
-        fontSize = 45.sp
+        fontFamily = Newsreader,
+        fontWeight = FontWeight.Bold,
+        fontSize = 45.sp,
+        lineHeight = 52.sp
     ),
     displaySmall = TextStyle(
-        fontFamily = InterDisplay,
-        fontWeight = FontWeight.Bold,
-        fontSize = 36.sp
+        fontFamily = Newsreader,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 36.sp,
+        lineHeight = 44.sp
     ),
 
     headlineLarge = TextStyle(
-        fontFamily = InterDisplay,
+        fontFamily = Newsreader,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 32.sp
+        fontSize = 32.sp,
+        lineHeight = 40.sp
     ),
     headlineMedium = TextStyle(
-        fontFamily = InterDisplay,
+        fontFamily = Newsreader,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 28.sp
+        fontSize = 28.sp,
+        lineHeight = 36.sp
     ),
     headlineSmall = TextStyle(
-        fontFamily = InterDisplay,
-        fontWeight = FontWeight.Bold,
-        fontSize = 24.sp
+        fontFamily = Newsreader,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 24.sp,
+        lineHeight = 32.sp
     ),
 
     titleLarge = TextStyle(
-        fontFamily = InterDisplay,
+        fontFamily = Newsreader,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 22.sp
+        fontSize = 22.sp,
+        lineHeight = 28.sp
     ),
     titleMedium = TextStyle(
-        fontFamily = InterDisplay,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 16.sp
+        fontFamily = Newsreader,
+        fontWeight = FontWeight.Medium,
+        fontSize = 17.sp,
+        lineHeight = 24.sp
     ),
     titleSmall = TextStyle(
-        fontFamily = InterDisplay,
-        fontWeight = FontWeight.Bold,
-        fontSize = 14.sp
+        fontFamily = Newsreader,
+        fontWeight = FontWeight.Medium,
+        fontSize = 15.sp,
+        lineHeight = 20.sp
     ),
 
     labelLarge = TextStyle(
         fontFamily = Inter,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 14.sp
+        fontSize = 14.sp,
+        lineHeight = 20.sp
     ),
     labelMedium = TextStyle(
         fontFamily = Inter,
-        fontWeight = FontWeight.Bold,
-        fontSize = 12.sp
+        fontWeight = FontWeight.Medium,
+        fontSize = 12.sp,
+        lineHeight = 16.sp
     ),
     labelSmall = TextStyle(
         fontFamily = Inter,
-        fontWeight = FontWeight.Bold,
-        fontSize = 11.sp
+        fontWeight = FontWeight.Medium,
+        fontSize = 11.sp,
+        lineHeight = 16.sp
     ),
 
     bodyLarge = TextStyle(
         fontFamily = Inter,
         fontWeight = FontWeight.Normal,
-        fontSize = 16.sp
+        fontSize = 16.sp,
+        lineHeight = 24.sp // ~1.5 line height for comfortable message reading
     ),
     bodyMedium = TextStyle(
         fontFamily = Inter,
         fontWeight = FontWeight.Normal,
-        fontSize = 14.sp
+        fontSize = 14.sp,
+        lineHeight = 21.sp // ~1.5 line height
     ),
     bodySmall = TextStyle(
         fontFamily = Inter,
-        fontWeight = FontWeight.Bold,
-        fontSize = 12.sp
+        fontWeight = FontWeight.Normal,
+        fontSize = 12.sp,
+        lineHeight = 18.sp // ~1.5 line height
     )
 )
 

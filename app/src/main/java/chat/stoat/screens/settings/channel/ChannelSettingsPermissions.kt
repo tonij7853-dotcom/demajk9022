@@ -16,6 +16,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -31,6 +32,18 @@ import chat.stoat.api.StoatAPI
 fun ChannelSettingsPermissions(navController: NavController, channelId: String) {
     val channel = StoatAPI.channelCache[channelId]
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val isServerChannel = channel?.server != null
+    val isServerOwner = if (isServerChannel) {
+        StoatAPI.serverCache[channel?.server]?.owner == StoatAPI.selfId
+    } else {
+        true
+    }
+
+    LaunchedEffect(isServerOwner) {
+        if (!isServerOwner) {
+            navController.popBackStack()
+        }
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

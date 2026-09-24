@@ -60,7 +60,7 @@ android {
     namespace = "chat.stoat"
 
     defaultConfig {
-        applicationId = "chat.revolt"
+        applicationId = "com.dismod.app"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = Integer.parseInt("001_007_002".replace("_", ""), 10)
@@ -151,7 +151,7 @@ sentry {
         buildproperty("sentry.upload_mappings", "RVX_SENTRY_UPLOAD_MAPPINGS") == "true"
 
     tracingInstrumentation {
-        enabled = true
+        enabled = false
 
         logcat {
             enabled = true

@@ -103,6 +103,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalConfiguration
@@ -162,9 +163,12 @@ import chat.stoat.core.model.schemas.Message
 import chat.stoat.internals.extensions.rememberChannelPermissions
 import chat.stoat.internals.extensions.zero
 import chat.stoat.screens.chat.LocalIsConnected
+import chat.stoat.sheets.AttachmentOptionsSheet
 import chat.stoat.sheets.ChannelInfoSheet
+import chat.stoat.sheets.GifPickerSheet
 import chat.stoat.sheets.MessageContextSheet
 import chat.stoat.sheets.ReactSheet
+import chat.stoat.ui.theme.ClaudeTokens
 import com.mikepenz.markdown.model.State
 import com.valentinilk.shimmer.ShimmerBounds
 import com.valentinilk.shimmer.rememberShimmer
@@ -655,6 +659,41 @@ fun ChannelScreen(
             }
         }
     }
+
+    var gifPickerSheetShown by remember { mutableStateOf(false) }
+    var attachmentOptionsSheetShown by remember { mutableStateOf(false) }
+
+    if (attachmentOptionsSheetShown) {
+        AttachmentOptionsSheet(
+            onDismissRequest = { attachmentOptionsSheetShown = false },
+            onPickMedia = {
+                attachmentOptionsSheetShown = false
+                openPhotoPickerCallback()
+            },
+            onPickFiles = {
+                attachmentOptionsSheetShown = false
+                openDocumentPickerCallback()
+            },
+            onOpenCamera = {
+                attachmentOptionsSheetShown = false
+                openCameraCallback()
+            },
+            onPickGif = {
+                attachmentOptionsSheetShown = false
+                gifPickerSheetShown = true
+            }
+        )
+    }
+
+    if (gifPickerSheetShown) {
+        GifPickerSheet(
+            onDismissRequest = { gifPickerSheetShown = false },
+            onGifSelected = { uri ->
+                gifPickerSheetShown = false
+                processFileUri(uri, null)
+            }
+        )
+    }
     // </editor-fold>
     // <editor-fold desc="Begin UI composition">
     Scaffold(
@@ -790,42 +829,52 @@ fun ChannelScreen(
                         }
                     },
                     actions = {
-                        val isDmLike =
-                            viewModel.channel?.channelType == ChannelType.DirectMessage ||
-                                    viewModel.channel?.channelType == ChannelType.Group
-                        if (isDmLike &&
-                            viewModel.channel?.voice == null &&
-                            StoatAPI.voiceStateCache[channelId]?.participants.isNullOrEmpty() &&
-                            channelPermissions has PermissionBit.Connect
-                        ) {
-                            IconButton(onClick = {
-                                scope.launch {
-                                    ActionChannel.send(
-                                        Action.OpenVoiceChannelOverlay(channelId)
-                                    )
-                                }
-                            }) {
+                        var overflowMenuExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { overflowMenuExpanded = true }) {
                                 Icon(
-                                    painter = painterResource(R.drawable.ic_call_24dp__fill),
-                                    contentDescription = stringResource(id = R.string.voice_start_call)
+                                    painter = painterResource(R.drawable.ic_more_vert_24dp),
+                                    contentDescription = stringResource(id = R.string.menu)
                                 )
                             }
-                        }
-                        IconButton(onClick = {
-                            scope.launch {
-                                ActionChannel.send(
-                                    Action.TopNavigate("channel/$channelId/search")
+                            DropdownMenu(
+                                expanded = overflowMenuExpanded,
+                                onDismissRequest = { overflowMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_search_24dp),
+                                            contentDescription = null
+                                        )
+                                    },
+                                    text = { Text(stringResource(R.string.channel_search)) },
+                                    onClick = {
+                                        overflowMenuExpanded = false
+                                        scope.launch {
+                                            ActionChannel.send(
+                                                Action.TopNavigate("channel/$channelId/search")
+                                            )
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_info_24dp),
+                                            contentDescription = null
+                                        )
+                                    },
+                                    text = { Text(stringResource(R.string.channel_action_details)) },
+                                    onClick = {
+                                        overflowMenuExpanded = false
+                                        channelInfoSheetShown = true
+                                    }
                                 )
                             }
-                        }) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_search_24dp),
-                                contentDescription = stringResource(id = R.string.channel_search)
-                            )
                         }
                     }
                 )
-                VoiceCallBanner()
             }
         }
     ) { pv ->
@@ -863,6 +912,50 @@ fun ChannelScreen(
                             modifier = Modifier.weight(1f),
                             contentAlignment = Alignment.BottomCenter
                         ) {
+                            if (viewModel.items.isEmpty() && !viewModel.isLoadingOlder && !viewModel.isJumpLoading) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    val channelName = viewModel.channel?.let { ChannelUtils.resolveName(it) } ?: ""
+                                    Box(
+                                        modifier = Modifier
+                                            .size(56.dp)
+                                            .clip(ClaudeTokens.Shapes.large)
+                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_chat_24dp),
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = stringResource(R.string.channel_empty_welcome, channelName.ifEmpty { "Stoat" }),
+                                        style = MaterialTheme.typography.titleLarge.copy(
+                                            fontFamily = chat.stoat.ui.theme.Newsreader,
+                                            fontSize = 20.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        textAlign = TextAlign.Center,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = stringResource(R.string.channel_empty_subtitle),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.Center,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+
                             LazyColumn(
                                 state = lazyListState,
                                 userScrollEnabled = !disableScroll,
@@ -1211,20 +1304,6 @@ fun ChannelScreen(
                                         }
                                     }
                                 }
-
-                                val isDmLikeWithOngoingCall =
-                                    (viewModel.channel?.channelType == ChannelType.DirectMessage ||
-                                            viewModel.channel?.channelType == ChannelType.Group) &&
-                                            StoatAPI.voiceStateCache[channelId]
-                                                ?.participants
-                                                ?.isNotEmpty() == true
-                                if ((viewModel.channel?.channelType == ChannelType.VoiceChannel ||
-                                            viewModel.channel?.voice != null ||
-                                            isDmLikeWithOngoingCall) &&
-                                    channelPermissions has PermissionBit.Connect
-                                ) {
-                                    JoinVoiceChannelButton(channelId)
-                                }
                             }
                         }
 
@@ -1316,13 +1395,7 @@ fun ChannelScreen(
                                             initialValueDirtyMarker = viewModel.initialTextFieldValueDirtyMarker,
                                             onValueChange = viewModel::putDraftContent,
                                             onAddAttachment = {
-                                                if (viewModel.activePane == ChannelScreenActivePane.AttachmentPicker) {
-                                                    viewModel.activePane =
-                                                        ChannelScreenActivePane.None
-                                                } else {
-                                                    viewModel.activePane =
-                                                        ChannelScreenActivePane.AttachmentPicker
-                                                }
+                                                attachmentOptionsSheetShown = true
                                             },
                                             onCommitAttachment = {
                                                 processFileUri(it, null)

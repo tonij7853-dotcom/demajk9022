@@ -25,15 +25,18 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import chat.stoat.sheets.GifPickerSheet
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -105,7 +108,29 @@ class ProfileSettingsScreenViewModel(val context: Application) :
             else -> return
         }
 
-        val mFile = File(context.cacheDir, uri.lastPathSegment ?: "avatar")
+        val mime = context.contentResolver.getType(uri)
+        val isGif = mime?.contains("gif", ignoreCase = true) == true ||
+                uri.toString().contains(".gif", ignoreCase = true)
+        val isPng = mime?.contains("png", ignoreCase = true) == true ||
+                uri.toString().contains(".png", ignoreCase = true)
+        val isWebp = mime?.contains("webp", ignoreCase = true) == true ||
+                uri.toString().contains(".webp", ignoreCase = true)
+
+        val ext = when {
+            isGif -> ".gif"
+            isPng -> ".png"
+            isWebp -> ".webp"
+            else -> ".jpg"
+        }
+        val contentType = when {
+            isGif -> ContentType.Image.GIF
+            isPng -> ContentType.Image.PNG
+            isWebp -> ContentType("image", "webp")
+            else -> ContentType.Image.JPEG
+        }
+
+        val filename = "avatar_${System.currentTimeMillis()}$ext"
+        val mFile = File(context.cacheDir, filename)
 
         mFile.outputStream().use { output ->
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -113,20 +138,13 @@ class ProfileSettingsScreenViewModel(val context: Application) :
             }
         }
 
-        val mime = context.contentResolver.getType(uri)
-
-        if (mime?.endsWith("webp") == true) {
-            uploadError = "WebP is not supported"
-            return
-        }
-
         viewModelScope.launch {
             try {
                 val id = uploadToAutumn(
                     mFile,
-                    uri.lastPathSegment ?: "avatar",
+                    filename,
                     "avatars",
-                    ContentType.parse(mime ?: "image/*"),
+                    contentType,
                     onProgress = { soFar, outOf ->
                         uploadProgress = soFar.toFloat() / outOf.toFloat()
                     }
@@ -156,7 +174,29 @@ class ProfileSettingsScreenViewModel(val context: Application) :
             else -> return
         }
 
-        val mFile = File(context.cacheDir, uri.lastPathSegment ?: "background")
+        val mime = context.contentResolver.getType(uri)
+        val isGif = mime?.contains("gif", ignoreCase = true) == true ||
+                uri.toString().contains(".gif", ignoreCase = true)
+        val isPng = mime?.contains("png", ignoreCase = true) == true ||
+                uri.toString().contains(".png", ignoreCase = true)
+        val isWebp = mime?.contains("webp", ignoreCase = true) == true ||
+                uri.toString().contains(".webp", ignoreCase = true)
+
+        val ext = when {
+            isGif -> ".gif"
+            isPng -> ".png"
+            isWebp -> ".webp"
+            else -> ".jpg"
+        }
+        val contentType = when {
+            isGif -> ContentType.Image.GIF
+            isPng -> ContentType.Image.PNG
+            isWebp -> ContentType("image", "webp")
+            else -> ContentType.Image.JPEG
+        }
+
+        val filename = "background_${System.currentTimeMillis()}$ext"
+        val mFile = File(context.cacheDir, filename)
 
         mFile.outputStream().use { output ->
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -164,20 +204,13 @@ class ProfileSettingsScreenViewModel(val context: Application) :
             }
         }
 
-        val mime = context.contentResolver.getType(uri)
-
-        if (mime?.endsWith("webp") == true) {
-            uploadError = "WebP is not supported"
-            return
-        }
-
         viewModelScope.launch {
             try {
                 val id = uploadToAutumn(
                     mFile,
-                    uri.lastPathSegment ?: "background",
+                    filename,
                     "backgrounds",
-                    ContentType.parse(mime ?: "image/*"),
+                    contentType,
                     onProgress = { soFar, outOf ->
                         uploadProgress = soFar.toFloat() / outOf.toFloat()
                     }
@@ -294,6 +327,8 @@ fun ProfileSettingsScreen(
                 .imePadding()
         ) {
             val scrollState = rememberScrollState()
+            var showGifPickerForAvatar by remember { mutableStateOf(false) }
+            var showGifPickerForBanner by remember { mutableStateOf(false) }
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -377,6 +412,19 @@ fun ProfileSettingsScreen(
                                     viewModel.removePfp()
                                 }
                             )
+
+                            OutlinedButton(
+                                onClick = { showGifPickerForAvatar = true },
+                                modifier = Modifier.padding(top = 8.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_photo_library_24dp),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Choose GIF", style = MaterialTheme.typography.labelMedium)
+                            }
                         }
 
                         Column(
@@ -401,6 +449,19 @@ fun ProfileSettingsScreen(
                                     viewModel.removeBackground()
                                 }
                             )
+
+                            OutlinedButton(
+                                onClick = { showGifPickerForBanner = true },
+                                modifier = Modifier.padding(top = 8.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_photo_library_24dp),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Choose GIF Banner", style = MaterialTheme.typography.labelMedium)
+                            }
                         }
                     }
                     Column(
@@ -515,6 +576,28 @@ fun ProfileSettingsScreen(
                         }
                     }
                 }
+            }
+
+            if (showGifPickerForAvatar) {
+                GifPickerSheet(
+                    onDismissRequest = { showGifPickerForAvatar = false },
+                    onGifSelected = { uri ->
+                        showGifPickerForAvatar = false
+                        viewModel.pfpModel = uri
+                        viewModel.saveNewPfp()
+                    }
+                )
+            }
+
+            if (showGifPickerForBanner) {
+                GifPickerSheet(
+                    onDismissRequest = { showGifPickerForBanner = false },
+                    onGifSelected = { uri ->
+                        showGifPickerForBanner = false
+                        viewModel.backgroundModel = uri
+                        viewModel.saveNewBackground()
+                    }
+                )
             }
         }
     }

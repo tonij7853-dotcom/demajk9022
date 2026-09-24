@@ -296,7 +296,13 @@ object StoatAPI {
             fetchSelf()
             true
         } catch (e: Exception) {
-            false
+            val msg = e.message ?: ""
+            if (msg == "InvalidSession" || msg == "Unauthorized" || msg == "NotFound") {
+                false
+            } else {
+                // Network glitch, rate limit, or server lag - keep session valid forever
+                true
+            }
         }
     }
 

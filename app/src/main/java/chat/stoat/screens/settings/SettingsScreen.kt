@@ -252,7 +252,7 @@ fun SettingsScreen(
                             .clickable { navController.navigate("about") }
                     )
 
-                    if (BuildConfig.DEBUG) {
+                    if (BuildConfig.DEBUG && LoadedSettings.experimentsEnabled) {
                         Spacer(Modifier.height(2.dp))
                         SettingsListItem(
                             last = miscLastIsDebug,
