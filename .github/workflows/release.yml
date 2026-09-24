@@ -61,7 +61,7 @@ jobs:
           fi
 
           VERSION_NAME="${TAG_NAME#v}"
-          VERSION_CODE=$((1007000 + github.run_number))
+          VERSION_CODE=$((1007000 + ${{ github.run_number }}))
           CHANGELOG="${{ github.event.inputs.changelog || github.event.head_commit.message || 'Latest Dismod update' }}"
 
           cat <<EOF > release-artifacts/version.json
