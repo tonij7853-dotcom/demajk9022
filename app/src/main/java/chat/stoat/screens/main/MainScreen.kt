@@ -90,7 +90,11 @@ fun MainScreen(navController: NavController) {
     ) { pv ->
         Box(Modifier.padding(pv)) {
             when (currentTab) {
-                MainScreenTab.Communities -> {}
+                MainScreenTab.Communities -> {
+                    CommunitiesScreen(
+                        navController
+                    )
+                }
                 MainScreenTab.Conversations -> {
                     ConversationsScreen(
                         navController

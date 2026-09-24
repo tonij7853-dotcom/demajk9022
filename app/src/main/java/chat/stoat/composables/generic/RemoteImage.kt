@@ -40,8 +40,8 @@ fun RemoteImage(
         contentDescription = description,
         contentScale = contentScale,
         modifier = modifier
-            .width(pxAsDp(width))
-            .height(pxAsDp(height)),
+            .then(if (width > 0) Modifier.width(pxAsDp(width)) else Modifier)
+            .then(if (height > 0) Modifier.height(pxAsDp(height)) else Modifier),
         transition = CrossFade,
         requestBuilderTransform = { rb ->
             if (!allowAnimation) rb.dontAnimate() else rb
