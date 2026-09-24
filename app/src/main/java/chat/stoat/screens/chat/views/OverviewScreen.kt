@@ -1,12 +1,8 @@
 package chat.stoat.screens.chat.views
 
-import android.content.Intent
 import android.util.Log
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,62 +12,62 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.exclude
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
-import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
-import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
-import androidx.compose.material3.Badge
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBarDefaults
-import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.navigation.NavController
 import chat.stoat.R
-import chat.stoat.activities.InviteActivity
 import chat.stoat.api.StoatAPI
 import chat.stoat.api.routes.user.fetchSelf
+import chat.stoat.composables.generic.ListHeader
 import chat.stoat.composables.generic.NonIdealState
 import chat.stoat.composables.screens.settings.UserOverview
 import chat.stoat.composables.skeletons.UserOverviewSkeleton
 import chat.stoat.core.model.schemas.User
 import chat.stoat.internals.extensions.zero
 import chat.stoat.screens.chat.LocalIsConnected
+import chat.stoat.screens.settings.SettingsScreenViewModel
 import chat.stoat.sheets.UserCardSheet
+import chat.stoat.updater.DismodUpdater
 import io.sentry.Sentry
+import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,13 +75,15 @@ fun OverviewScreen(
     navController: NavController,
     useDrawer: Boolean,
     onDrawerClicked: () -> Unit,
-    includePadding: Boolean = true
+    includePadding: Boolean = true,
+    settingsViewModel: SettingsScreenViewModel = koinViewModel()
 ) {
     val context = LocalContext.current
-    val resources = LocalResources.current
+    val scope = rememberCoroutineScope()
 
     var isLoading by rememberSaveable { mutableStateOf(true) }
     var user by rememberSaveable { mutableStateOf<User?>(null) }
+
     LaunchedEffect(Unit) {
         val inCache = StoatAPI.userCache[StoatAPI.selfId]
         if (inCache != null) {
@@ -117,50 +115,40 @@ fun OverviewScreen(
         }
     }
 
-    var hasUnreads by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        hasUnreads = StoatAPI.unreads.hasAnyUnreads()
-    }
-
-    var countUnreads by rememberSaveable { mutableStateOf<Int?>(null) }
-    LaunchedEffect(hasUnreads) {
-        countUnreads = if (hasUnreads) {
-            StoatAPI.unreads.countChannelsWithUnreads()
-        } else {
-            0
-        }
-    }
-
-    val lazyStaggeredGridState = rememberLazyStaggeredGridState()
-    val scrollabilityIndicatorOpacity by animateFloatAsState(
-        if (!lazyStaggeredGridState.canScrollBackward && lazyStaggeredGridState.canScrollForward) 1.0f else 0.0f,
-        label = "scrollabilityIndicatorOpacity"
-    )
-
     Scaffold(
         topBar = {
             Column {
                 AnimatedVisibility(LocalIsConnected.current) {
                     Spacer(
-                        Modifier
-                            .height(
-                                WindowInsets.statusBars.asPaddingValues()
-                                    .calculateTopPadding()
-                            )
+                        Modifier.height(
+                            WindowInsets.statusBars.asPaddingValues()
+                                .calculateTopPadding()
+                        )
                     )
                 }
                 CenterAlignedTopAppBar(
-                    title = { Text(stringResource(R.string.overview_screen_title)) },
+                    title = {
+                        Text(
+                            text = stringResource(R.string.overview_screen_title),
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
                     navigationIcon = {
                         if (useDrawer) {
-                            IconButton(onClick = {
-                                onDrawerClicked()
-                            }) {
+                            IconButton(onClick = onDrawerClicked) {
                                 Icon(
                                     painter = painterResource(R.drawable.ic_menu_24dp),
                                     contentDescription = stringResource(id = R.string.menu)
                                 )
                             }
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { navController.navigate("settings") }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_settings_24dp),
+                                contentDescription = stringResource(id = R.string.settings)
+                            )
                         }
                     },
                     windowInsets = WindowInsets.zero
@@ -187,255 +175,236 @@ fun OverviewScreen(
         }
 
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .then(
-                    Modifier
-                        .padding(pv)
-                        .padding(horizontal = 16.dp)
-                )
+                .fillMaxSize()
+                .padding(pv)
+                .verticalScroll(rememberScrollState())
         ) {
             AnimatedContent(targetState = isLoading, label = "isLoading") { loading ->
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    if (loading) {
-                        Spacer(modifier = Modifier.height(16.dp))
+                if (loading) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
                         UserOverviewSkeleton(false)
-                        Spacer(modifier = Modifier.height(16.dp))
-                    } else {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        user?.let { user ->
-                            UserOverview(user, internalPadding = false)
+                    }
+                } else {
+                    user?.let { u ->
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            UserOverview(u, internalPadding = false)
                         }
-                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
             }
 
             if (isLoading) {
-                CircularProgressIndicator(Modifier.size(48.dp))
-            }
-
-            AnimatedVisibility(
-                visible = isLoading
-            ) {
-                Spacer(modifier = Modifier.height(48.dp))
-            }
-
-            AnimatedVisibility(
-                visible = !isLoading,
-                enter = fadeIn(),
-            ) {
-                Box {
-                    LazyVerticalStaggeredGrid(
-                        columns = StaggeredGridCells.Adaptive(300.dp),
-                        verticalItemSpacing = 16.dp,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        state = lazyStaggeredGridState
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(Modifier.size(40.dp))
+                }
+            } else {
+                // Quick actions: Edit Profile & Share Profile
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    FilledTonalButton(
+                        onClick = { navController.navigate("settings/profile") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        if (false) { // TODO - implement catch up screen
-                            item(key = "catchup") {
-                                OverviewScreenLink(
-                                    onClick = {
-                                        if (hasUnreads) navController.navigate("catchup")
-                                    },
-                                    clickable = hasUnreads,
-                                    backgroundColour = if (hasUnreads) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                                    foregroundColour = if (hasUnreads) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    title = {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Icon(
-                                                painter = if (hasUnreads) painterResource(R.drawable.ic_move_to_inbox_24dp) else painterResource(
-                                                    R.drawable.ic_inbox_24dp
-                                                ),
-                                                contentDescription = null,
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                            Text(
-                                                if (hasUnreads) stringResource(R.string.overview_screen_catch_up) else stringResource(
-                                                    R.string.overview_screen_catch_up_none
-                                                )
-                                            )
-
-                                            if (hasUnreads) {
-                                                Spacer(Modifier.weight(1f))
-                                                Badge {
-                                                    Text(
-                                                        countUnreads?.toString()
-                                                            ?: stringResource(R.string.overview_screen_catch_up_amount_badge_loading)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    },
-                                    body = {
-                                        Text(
-                                            if (hasUnreads) stringResource(R.string.overview_screen_catch_up_description) else stringResource(
-                                                R.string.overview_screen_catch_up_none_description
-                                            )
-                                        )
-                                    }
-                                )
-                            }
-                        }
-
-                        item(key = "settings") {
-                            OverviewScreenLink(
-                                onClick = {
-                                    navController.navigate("settings")
-                                },
-                                backgroundColour = MaterialTheme.colorScheme.primaryContainer,
-                                foregroundColour = MaterialTheme.colorScheme.onPrimaryContainer,
-                                title = {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_settings_24dp),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                        Text(stringResource(R.string.overview_screen_settings))
-                                    }
-                                },
-                                body = { Text(stringResource(R.string.overview_screen_settings_description)) }
-                            )
-                        }
-                        item(key = "shareProfile") {
-                            OverviewScreenLink(
-                                onClick = {
-                                    showUserCardSheet = true
-                                },
-                                backgroundColour = MaterialTheme.colorScheme.tertiaryContainer,
-                                foregroundColour = MaterialTheme.colorScheme.onTertiaryContainer,
-                                title = {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_ios_share_24dp),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                        Text(stringResource(R.string.overview_screen_share_profile))
-                                    }
-                                },
-                                body = { Text(stringResource(R.string.overview_screen_share_profile_description)) }
-                            )
-                        }
-
-                        item(key = "changelog") {
-                            OverviewScreenLink(
-                                onClick = {
-                                    navController.navigate("changelog/latest")
-                                },
-                                backgroundColour = MaterialTheme.colorScheme.errorContainer,
-                                foregroundColour = MaterialTheme.colorScheme.onErrorContainer,
-                                title = {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_campaign_24dp),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                        Text(stringResource(R.string.overview_screen_changelog))
-                                    }
-                                },
-                                body = { Text(stringResource(R.string.overview_screen_changelog_description)) }
-                            )
-                        }
-
-                        item(key = "join-lounge") {
-                            OverviewScreenLink(
-                                onClick = {
-                                    val intent = Intent(
-                                        context,
-                                        InviteActivity::class.java
-                                    ).setAction(Intent.ACTION_VIEW)
-
-                                    intent.data = "https://stt.gg/Testers".toUri()
-                                    context.startActivity(intent)
-                                },
-                                backgroundColour = MaterialTheme.colorScheme.primary,
-                                foregroundColour = MaterialTheme.colorScheme.onPrimary,
-                                title = {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_waving_hand_24dp),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                        Text(stringResource(R.string.overview_screen_join_lounge))
-                                    }
-                                },
-                                body = { Text(stringResource(R.string.overview_screen_join_lounge_description)) }
-                            )
-                        }
+                        Icon(
+                            painter = painterResource(R.drawable.ic_edit_24dp),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.user_info_sheet_edit_profile))
                     }
 
-                    Box(
-                        Modifier
-                            .alpha(scrollabilityIndicatorOpacity)
-                            .background(
-                                Brush.linearGradient(
-                                    0.0f to MaterialTheme.colorScheme.background.copy(alpha = 0.0f),
-                                    0.5f to MaterialTheme.colorScheme.background.copy(alpha = 0.3f),
-                                    1.0f to MaterialTheme.colorScheme.background,
-                                    end = Offset.Infinite.copy(x = .0f)
-                                )
-                            )
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(60.dp)
-                    )
+                    FilledTonalButton(
+                        onClick = { showUserCardSheet = true },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_ios_share_24dp),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.overview_screen_share_profile))
+                    }
                 }
+
+                // Account Category
+                ListHeader {
+                    Text(stringResource(R.string.settings_category_account))
+                }
+                OverviewListItem(
+                    first = true,
+                    title = stringResource(R.string.settings_account),
+                    icon = R.drawable.ic_lock_24dp,
+                    onClick = { navController.navigate("settings/account") }
+                )
+                Spacer(Modifier.height(2.dp))
+                OverviewListItem(
+                    title = stringResource(R.string.settings_profile),
+                    icon = R.drawable.ic_id_card_24dp,
+                    onClick = { navController.navigate("settings/profile") }
+                )
+                Spacer(Modifier.height(2.dp))
+                OverviewListItem(
+                    last = true,
+                    title = stringResource(R.string.settings_sessions),
+                    icon = R.drawable.ic_devices_24dp,
+                    onClick = { navController.navigate("settings/sessions") }
+                )
+
+                // App Settings Category
+                ListHeader {
+                    Text(stringResource(R.string.settings_category_general))
+                }
+                OverviewListItem(
+                    first = true,
+                    title = stringResource(R.string.settings_appearance),
+                    icon = R.drawable.ic_palette_24dp,
+                    onClick = { navController.navigate("settings/appearance") }
+                )
+                Spacer(Modifier.height(2.dp))
+                OverviewListItem(
+                    title = stringResource(R.string.settings_notifications),
+                    icon = R.drawable.ic_notifications_24dp,
+                    onClick = { navController.navigate("settings/notifications") }
+                )
+                Spacer(Modifier.height(2.dp))
+                OverviewListItem(
+                    title = stringResource(R.string.settings_chat),
+                    icon = R.drawable.ic_chat_24dp,
+                    onClick = { navController.navigate("settings/chat") }
+                )
+                Spacer(Modifier.height(2.dp))
+                OverviewListItem(
+                    last = true,
+                    title = stringResource(R.string.settings_language),
+                    icon = R.drawable.ic_language_24dp,
+                    onClick = { navController.navigate("settings/language") }
+                )
+
+                // Dismod Category
+                ListHeader {
+                    Text("Dismod")
+                }
+                OverviewListItem(
+                    first = true,
+                    title = stringResource(R.string.settings_changelog),
+                    icon = R.drawable.ic_campaign_24dp,
+                    onClick = { navController.navigate("changelog/latest") }
+                )
+                Spacer(Modifier.height(2.dp))
+                OverviewListItem(
+                    title = "Check for Updates",
+                    icon = R.drawable.ic_download_24dp,
+                    onClick = {
+                        DismodUpdater.checkForUpdates(context, scope, notifyIfNoUpdate = true)
+                    }
+                )
+                Spacer(Modifier.height(2.dp))
+                OverviewListItem(
+                    last = true,
+                    title = stringResource(R.string.about),
+                    icon = R.drawable.ic_info_24dp,
+                    onClick = { navController.navigate("about") }
+                )
+
+                // Logout
+                Spacer(Modifier.height(16.dp))
+                OverviewListItem(
+                    first = true,
+                    last = true,
+                    danger = true,
+                    title = stringResource(R.string.logout),
+                    icon = R.drawable.ic_logout_24dp,
+                    onClick = {
+                        settingsViewModel.logout()
+                        navController.navigate("login/greeting") {
+                            popUpTo("chat") {
+                                inclusive = true
+                            }
+                        }
+                    }
+                )
+                Spacer(Modifier.height(32.dp))
             }
         }
     }
 }
 
 @Composable
-fun OverviewScreenLink(
-    onClick: () -> Unit,
-    backgroundColour: Color,
-    foregroundColour: Color,
-    clickable: Boolean = true,
-    title: @Composable () -> Unit,
-    body: @Composable () -> Unit,
+private fun OverviewListItem(
+    first: Boolean = false,
+    last: Boolean = false,
+    danger: Boolean = false,
+    title: String,
+    icon: Int,
+    onClick: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .clip(MaterialTheme.shapes.extraLarge)
-            .then(if (clickable) Modifier.clickable(onClick = onClick) else Modifier)
-            .background(backgroundColour)
-            .padding(vertical = 32.dp)
-            .fillMaxWidth()
-    ) {
-        CompositionLocalProvider(LocalContentColor provides foregroundColour) {
-            Column(
-                horizontalAlignment = Alignment.Start,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(horizontal = 24.dp)
-            ) {
-                ProvideTextStyle(MaterialTheme.typography.titleLarge) {
-                    title()
-                }
-                ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
-                    body()
-                }
+    ListItem(
+        colors = ListItemDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ),
+        headlineContent = {
+            Text(
+                text = title,
+                color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Medium
+            )
+        },
+        leadingContent = {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
+            )
+        },
+        trailingContent = {
+            if (!danger) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_chevron_forward_24dp),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.size(20.dp)
+                )
             }
-        }
-    }
+        },
+        modifier = Modifier
+            .padding(horizontal = 16.dp)
+            .clip(
+                when {
+                    first && last -> MaterialTheme.shapes.large
+                    first -> MaterialTheme.shapes.extraSmall.copy(
+                        topStart = MaterialTheme.shapes.large.topStart,
+                        topEnd = MaterialTheme.shapes.large.topEnd
+                    )
+                    last -> MaterialTheme.shapes.extraSmall.copy(
+                        bottomStart = MaterialTheme.shapes.large.bottomStart,
+                        bottomEnd = MaterialTheme.shapes.large.bottomEnd
+                    )
+                    else -> MaterialTheme.shapes.extraSmall
+                }
+            )
+            .clickable(onClick = onClick)
+    )
 }

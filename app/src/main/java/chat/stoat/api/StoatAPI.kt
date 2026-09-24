@@ -106,7 +106,7 @@ val StoatHttp = HttpClient(OkHttp) {
 
     val chuckerCollector = ChuckerCollector(
         context = StoatApplication.instance,
-        showNotification = true,
+        showNotification = false,
         retentionPeriod = RetentionManager.Period.ONE_DAY
     )
 
@@ -129,7 +129,7 @@ val StoatHttp = HttpClient(OkHttp) {
                 .build()
             chain.proceed(request)
         }
-        addInterceptor(chuckerInterceptor)
+        // Chucker interceptor disabled to ensure no HTTP logging notifications appear
     }
 
     defaultRequest {
