@@ -129,3 +129,66 @@
     height: 85px !important;
   }
 }
+
+/* Quick group selector & chips */
+.group-select-container {
+  margin-top: 14px;
+}
+
+.group-select {
+  width: 100%;
+  border: 1px solid #343541;
+  border-radius: 10px;
+  outline: none;
+  padding: 10px 12px;
+  color: #f3f4f8;
+  background: #121319;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+.group-select:focus {
+  border-color: #8e78ef;
+  box-shadow: 0 0 0 3px #8e78ef24;
+}
+
+.group-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 9px;
+  margin-bottom: 6px;
+}
+
+.group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid #343544;
+  border-radius: 20px;
+  background: #181923;
+  color: #c8cbd9;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.group-chip:hover {
+  background: #252636;
+  border-color: #61559c;
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.group-chip.active {
+  background: #393168;
+  border-color: #8e78ef;
+  color: #e4dcff;
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(142, 120, 239, 0.28);
+}
+

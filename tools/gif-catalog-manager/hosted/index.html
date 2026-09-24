@@ -48,11 +48,21 @@
               <input id="gif-file" type="file" accept="image/gif,image/webp,image/png,image/jpeg" hidden />
             </div>
             <p class="hint">Any public image or GIF link is supported. Or click "Upload file" to select a file directly from your device.</p>
-            <div class="field-grid">
-              <div><label for="gif-title">Name</label><input id="gif-title" type="text" maxlength="80" placeholder="Happy dance" required /></div>
-              <div><label for="gif-category">GIF group</label><input id="gif-category" type="text" maxlength="32" value="Reactions" required /></div>
+            <label for="gif-title">Name</label>
+            <input id="gif-title" type="text" maxlength="80" placeholder="Happy dance" required />
+
+            <div class="group-select-container">
+              <label for="gif-category-select">GIF group <span class="muted">· choose from existing</span></label>
+              <select id="gif-category-select" class="group-select">
+                <option value="">-- Choose existing group --</option>
+              </select>
+              <div id="group-chips" class="group-chips"></div>
             </div>
-            <label for="gif-emoji">Group icon (emoji)</label><input id="gif-emoji" type="text" maxlength="8" value="🙂" />
+
+            <div class="field-grid">
+              <div><label for="gif-category">Group name</label><input id="gif-category" type="text" maxlength="32" value="Reactions" required /></div>
+              <div><label for="gif-emoji">Group emoji</label><input id="gif-emoji" type="text" maxlength="8" value="🙂" /></div>
+            </div>
             <label for="gif-tags">Search tags <span class="muted">· comma separated</span></label><input id="gif-tags" type="text" maxlength="300" placeholder="happy, celebration, dance" />
             <label class="permission-check"><input id="rights-confirmed" type="checkbox" /><span>I have permission to share this GIF with Dismod users.</span></label>
             <div class="form-actions">

@@ -279,6 +279,94 @@ function makeCard(gif) {
   return card;
 }
 
+function selectGroup(name, emoji) {
+  if (!name) return;
+  const categoryInput = $('#gif-category');
+  const emojiInput = $('#gif-emoji');
+  if (categoryInput) categoryInput.value = name;
+  if (emojiInput && emoji) emojiInput.value = emoji;
+
+  const select = $('#gif-category-select');
+  if (select && select.value !== name) {
+    select.value = name;
+  }
+
+  const chips = document.querySelectorAll('.group-chip');
+  chips.forEach((c) => {
+    c.classList.toggle('active', c.dataset.group === name);
+  });
+}
+
+function updateGroupOptions(gifs = []) {
+  const groupsMap = new Map();
+  // Standard default if nothing yet
+  groupsMap.set('Reactions', '🙂');
+
+  for (const gif of gifs) {
+    if (gif.category && gif.category.trim()) {
+      const cat = gif.category.trim();
+      const emoji = (gif.categoryEmoji || '🙂').trim();
+      groupsMap.set(cat, emoji);
+    }
+  }
+
+  const select = $('#gif-category-select');
+  const chipsContainer = $('#group-chips');
+  const currentCat = $('#gif-category')?.value.trim() || 'Reactions';
+
+  if (select) {
+    select.innerHTML = '<option value="">-- Choose existing group --</option>';
+    for (const [name, emoji] of groupsMap.entries()) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.dataset.emoji = emoji;
+      opt.textContent = `${emoji} ${name}`;
+      if (name.toLowerCase() === currentCat.toLowerCase()) {
+        opt.selected = true;
+      }
+      select.appendChild(opt);
+    }
+  }
+
+  if (chipsContainer) {
+    chipsContainer.innerHTML = '';
+    for (const [name, emoji] of groupsMap.entries()) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'group-chip' + (name.toLowerCase() === currentCat.toLowerCase() ? ' active' : '');
+      chip.dataset.group = name;
+      chip.innerHTML = `<span>${emoji}</span> <span>${name}</span>`;
+      chip.addEventListener('click', () => {
+        selectGroup(name, emoji);
+      });
+      chipsContainer.appendChild(chip);
+    }
+  }
+}
+
+const groupSelect = $('#gif-category-select');
+if (groupSelect) {
+  groupSelect.addEventListener('change', () => {
+    const val = groupSelect.value;
+    if (val) {
+      const opt = groupSelect.options[groupSelect.selectedIndex];
+      selectGroup(val, opt?.dataset.emoji || '🙂');
+    }
+  });
+}
+
+const categoryInput = $('#gif-category');
+if (categoryInput) {
+  categoryInput.addEventListener('input', () => {
+    const current = categoryInput.value.trim();
+    if (groupSelect) groupSelect.value = current;
+    const chips = document.querySelectorAll('.group-chip');
+    chips.forEach((c) => {
+      c.classList.toggle('active', c.dataset.group.toLowerCase() === current.toLowerCase());
+    });
+  });
+}
+
 async function loadLibrary() {
   try {
     const { gifs, pendingPullRequest } = await api('catalog');
@@ -299,6 +387,7 @@ async function loadLibrary() {
     $('#gif-count').textContent = gifs.length;
     $('#library-grid').replaceChildren(...gifs.map(makeCard));
     $('#library-empty').hidden = gifs.length > 0;
+    updateGroupOptions(gifs);
   } catch (error) {
     if (error.status === 401) {
       setStoredAccessCode(null);
