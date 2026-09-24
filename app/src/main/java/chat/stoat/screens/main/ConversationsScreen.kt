@@ -223,6 +223,7 @@ fun ConversationsScreen(navController: NavController) {
                         Button(onClick = { reconnectScope.launch { StoatAPI.connectWS() } }) {
                             Text("Retry connection")
                         }
+                    }
                 } else {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
