@@ -158,7 +158,7 @@ async function safeFetch(value) {
         redirect: 'manual',
         signal: AbortSignal.timeout(20000),
         headers: {
-          'User-Agent': 'Dismod-GIF-Studio/1.0',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           Accept: 'image/gif,image/webp,image/apng,image/png,image/jpeg,text/html;q=0.8,*/*;q=0.5',
         },
       });
@@ -246,33 +246,50 @@ async function normalizeGif(data) {
       return { data, width: frameWidth, height: frameHeight, frames };
     }
 
-    const { data: output, info } = await sharp(data, { animated: true, limitInputPixels: 100_000_000, failOn: 'none' })
-      .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
-      .gif({ loop: 0, effort: 5 })
-      .toBuffer({ resolveWithObject: true });
+    const candidateConfigs = [];
+    if (frames > 100 || data.byteLength > 12 * 1024 * 1024) {
+      candidateConfigs.push({ width: 320, colours: 160 }, { width: 280, colours: 128 }, { width: 240, colours: 96 });
+    } else if (frames > 50 || data.byteLength > 6 * 1024 * 1024) {
+      candidateConfigs.push({ width: 480, colours: 256 }, { width: 360, colours: 192 }, { width: 280, colours: 128 });
+    } else {
+      candidateConfigs.push({ width: 720, colours: 256 }, { width: 480, colours: 256 }, { width: 360, colours: 192 }, { width: 280, colours: 128 });
+    }
 
-    let finalData = output;
-    let actualFrames = info.pages || frames;
-    let finalWidth = info.width || frameWidth;
-    let finalHeight = (info.pages && info.pages > 1) ? Math.floor(info.height / info.pages) : info.height;
+    let finalData = null;
+    let finalInfo = null;
 
-    if (finalData.byteLength > MAX_OUTPUT && frames > 1) {
-      const downscaled = await sharp(data, { animated: true, limitInputPixels: 100_000_000, failOn: 'none' })
-        .resize({ width: 640, height: 640, fit: 'inside', withoutEnlargement: true })
-        .gif({ loop: 0, effort: 7 })
+    for (const { width: targetWidth, colours } of candidateConfigs) {
+      const { data: output, info } = await sharp(data, { animated: true, limitInputPixels: 100_000_000, failOn: 'none' })
+        .resize({ width: targetWidth, height: targetWidth, fit: 'inside', withoutEnlargement: true })
+        .gif({ loop: 0, effort: 3, ...(colours < 256 ? { colours } : {}) })
         .toBuffer({ resolveWithObject: true });
-      if (downscaled.data.byteLength <= MAX_OUTPUT) {
-        finalData = downscaled.data;
-        actualFrames = downscaled.info.pages || frames;
-        finalWidth = downscaled.info.width;
-        finalHeight = (downscaled.info.pages && downscaled.info.pages > 1) ? Math.floor(downscaled.info.height / downscaled.info.pages) : downscaled.info.height;
+
+      if (output.byteLength <= MAX_OUTPUT) {
+        finalData = output;
+        finalInfo = info;
+        break;
       }
     }
 
-    if (actualFrames > MAX_FRAMES) fail(`That animation has more than ${MAX_FRAMES} frames.`);
-    if (finalData.byteLength > MAX_OUTPUT) fail('The converted GIF is over 4 MB. Use a smaller image or a shorter animation.', 413);
-    const checked = await sharp(finalData, { animated: true, limitInputPixels: 100_000_000 }).metadata();
-    if (checked.format !== 'gif' || !checked.width || !checked.height) fail('This image could not be converted into a valid GIF.');
+    if (!finalData) {
+      const { data: output, info } = await sharp(data, { animated: true, limitInputPixels: 100_000_000, failOn: 'none' })
+        .resize({ width: 240, height: 240, fit: 'inside', withoutEnlargement: true })
+        .gif({ loop: 0, effort: 3, colours: 64 })
+        .toBuffer({ resolveWithObject: true });
+      if (output.byteLength <= MAX_OUTPUT) {
+        finalData = output;
+        finalInfo = info;
+      }
+    }
+
+    if (!finalData || finalData.byteLength > MAX_OUTPUT) {
+      fail('The converted GIF is over 4 MB. Use a shorter animation or smaller image.', 413);
+    }
+
+    const actualFrames = finalInfo.pages || frames;
+    const finalWidth = finalInfo.width || frameWidth;
+    const finalHeight = (finalInfo.pages && finalInfo.pages > 1) ? Math.floor(finalInfo.height / finalInfo.pages) : finalInfo.height;
+
     return { data: finalData, width: finalWidth, height: finalHeight, frames: actualFrames };
   } catch (error) {
     if (error.status) throw error;
