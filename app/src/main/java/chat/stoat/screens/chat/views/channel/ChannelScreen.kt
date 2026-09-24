@@ -1484,6 +1484,10 @@ fun ChannelScreen(
                                                         ChannelScreenActivePane.EmojiPicker
                                                 }
                                             },
+                                            onPickGif = {
+                                                viewModel.activePane = ChannelScreenActivePane.None
+                                                gifPickerSheetShown = true
+                                            },
                                             onSendMessage = viewModel::sendPendingMessage,
                                             channelType = viewModel.channel?.channelType
                                                 ?: ChannelType.TextChannel,
