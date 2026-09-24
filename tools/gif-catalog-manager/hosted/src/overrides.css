@@ -43,4 +43,89 @@
   display: none !important;
 }
 
+/* Compact, lag-free library gallery */
+.library-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 150px)) !important;
+  gap: 10px !important;
+  justify-content: start;
+}
 
+.gif-card {
+  max-width: 150px;
+  border-radius: 9px !important;
+  content-visibility: auto;
+  contain-intrinsic-size: 140px 145px;
+  contain: layout paint;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.gif-card:hover {
+  transform: translateY(-2px);
+  border-color: #61559c;
+}
+
+.gif-thumb {
+  height: 96px !important;
+  aspect-ratio: auto !important;
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
+  background: #14151b !important;
+}
+
+.gif-thumb img {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+.gif-card-content {
+  padding: 6px 8px 7px !important;
+  background: #191a22;
+}
+
+.gif-card-title {
+  margin: 0 0 3px !important;
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+}
+
+.gif-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: 10px !important;
+}
+
+.gif-card-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 85px;
+}
+
+.delete-gif {
+  font-size: 10px !important;
+  padding: 1px 4px !important;
+  border-radius: 4px;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.delete-gif:hover {
+  background-color: rgba(255, 126, 133, 0.15);
+}
+
+@media (max-width: 560px) {
+  .library-grid {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)) !important;
+    gap: 8px !important;
+  }
+  .gif-card {
+    max-width: none;
+  }
+  .gif-thumb {
+    height: 85px !important;
+  }
+}
