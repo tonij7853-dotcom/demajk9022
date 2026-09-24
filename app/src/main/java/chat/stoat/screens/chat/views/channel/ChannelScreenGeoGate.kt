@@ -46,27 +46,13 @@ fun ChannelScreenGeoGate(
             modifier = Modifier.padding(horizontal = 16.dp)
         )
 
-        when (GeoStateProvider.geoState?.countryCode) {
-            "GB" -> {
-                Text(
-                    text = stringResource(R.string.geogate_description_variant_osa_uk_25),
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        textAlign = TextAlign.Center
-                    ),
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-            }
-
-            else -> {
-                Text(
-                    text = stringResource(R.string.geogate_description),
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        textAlign = TextAlign.Center
-                    ),
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-            }
-        }
+        Text(
+            text = stringResource(R.string.geogate_description),
+            style = MaterialTheme.typography.bodyMedium.copy(
+                textAlign = TextAlign.Center
+            ),
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
 
         Button(onClick = { onAcknowledge() }) {
             Text(stringResource(R.string.geogate_acknowledge))

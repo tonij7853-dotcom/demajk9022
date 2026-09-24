@@ -127,15 +127,6 @@ fun LanguagePickerSettingsScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                     },
-                    supportingContent = {
-                        if (!locale.displayCountry.isNullOrEmpty()) {
-                            Text(
-                                locale.displayCountry,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    },
                     trailingContent = {
                         Text(
                             locale.getDisplayLanguage(locale),

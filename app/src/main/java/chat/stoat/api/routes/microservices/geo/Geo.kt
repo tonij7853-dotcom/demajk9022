@@ -17,19 +17,6 @@ data class GeoResponse(
 )
 
 suspend fun queryGeo(): GeoResponse {
-    try {
-        val response = StoatHttp.get("https://geo.revolt.chat/?client=android") {
-            header("User-Agent", buildUserAgent("Ktor queryGeo"))
-        }
-
-        if (response.status == HttpStatusCode.OK) {
-            return StoatJson.decodeFromString(response.bodyAsText())
-        } else throw Exception("Failed to query geo: ${response.status.value} ${response.status.description}")
-    } catch (e: Exception) {
-        throw Exception("Failed to query geo: ${e.message}", e).also {
-            if (e is HitRateLimitException) {
-                throw e
-            }
-        }
-    }
+    // Location tracking disabled - no country or location is detected or revealed
+    return GeoResponse(countryCode = "", isAgeRestrictedGeo = false)
 }
