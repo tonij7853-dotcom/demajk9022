@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -44,6 +45,8 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import chat.stoat.R
 import chat.stoat.api.StoatAPI
+import chat.stoat.api.realtime.DisconnectionState
+import chat.stoat.api.realtime.RealtimeSocket
 import chat.stoat.api.internals.ChannelUtils
 import chat.stoat.api.settings.LoadedSettings
 import chat.stoat.composables.generic.GroupIcon
@@ -74,6 +77,8 @@ fun ConversationsScreen(navController: NavController) {
             .reversed()
     }
 
+    val isConnecting = RealtimeSocket.disconnectionState != DisconnectionState.Connected
+
     Scaffold(
         contentWindowInsets = ScaffoldDefaults.contentWindowInsets.exclude(NavigationBarDefaults.windowInsets),
         topBar = {
@@ -96,42 +101,61 @@ fun ConversationsScreen(navController: NavController) {
                     .padding(32.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(76.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
-                        contentAlignment = Alignment.Center
+                if (isConnecting) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_forum_24dp),
-                            contentDescription = null,
-                            modifier = Modifier.size(38.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(36.dp),
+                            strokeWidth = 3.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Loading conversations...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                } else {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(76.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_forum_24dp),
+                                contentDescription = null,
+                                modifier = Modifier.size(38.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                        Spacer(modifier = Modifier.height(18.dp))
 
-                    Text(
-                        text = "No conversations",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    )
+                        Text(
+                            text = "No conversations",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                    Text(
-                        text = "You don't have any conversations yet. When a friend messages you or you start a chat, it will show up here.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
+                        Text(
+                            text = "You don't have any conversations yet. When a friend messages you or you start a chat, it will show up here.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         } else {

@@ -134,6 +134,7 @@ import chat.stoat.updater.DismodUpdater
 import chat.stoat.voice.VoiceCallManager
 import io.ktor.client.request.get
 import io.sentry.android.core.SentryAndroid
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import org.koin.androidx.viewmodel.ext.android.viewModel
@@ -143,7 +144,7 @@ class MainActivityViewModel(
     private val context: Context
 ) : ViewModel() {
     val nextDestination = MutableStateFlow<String?>(null)
-    var isConnected = MutableStateFlow(false)
+    var isConnected = MutableStateFlow(true)
     val isReady = MutableStateFlow(false)
     val couldNotLogIn = MutableStateFlow(false)
 
@@ -207,66 +208,39 @@ class MainActivityViewModel(
         viewModelScope.launch {
             Log.d("MainActivity", "Checking logged in state")
 
-            isConnected.emit(hasInternetConnection())
+            val online = hasInternetConnection()
+            isConnected.emit(online)
 
-            Log.d("MainActivity", "Checking if we can reach Stoat")
-
-            if (!isConnected.value) return@launch startWithoutDestination()
-
-            Log.d("MainActivity", "We can reach Stoat, checking if we're logged in")
-
-            val token = kvStorage.get("sessionToken")
-                ?: return@launch startWithDestination("login/greeting")
-            val id = kvStorage.get("sessionId") ?: ""
-
-            Log.d(
-                "MainActivity",
-                "We have a session token, checking if it's valid and if we can still reach Stoat"
-            )
-
-            val canReachStoat = canReachStoat()
-            val valid = try {
-                StoatAPI.checkSessionToken(token)
-            } catch (e: Throwable) {
-                true
+            if (!online) {
+                return@launch startWithoutDestination()
             }
 
-            if (canReachStoat && !valid) {
-                Log.d("MainActivity", "Session token is invalid, could not log in")
-                couldNotLogIn.emit(true)
-            } else {
-                try {
-                    Log.d("MainActivity", "Session token is valid, checking onboarding state")
-                    val onboard = needsOnboarding(token)
-                    if (onboard) {
-                        Log.d("MainActivity", "Onboarding state is incomplete, starting onboarding")
-                        startWithDestination("register/onboarding")
-                        return@launch
-                    }
-                } catch (e: HitRateLimitException) {
-                    Log.e("MainActivity", "Rate limited while checking onboarding state", e)
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.rate_limit_toast),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    return@launch startWithoutDestination()
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "Failed to check onboarding state", e)
-                }
+            val token = kvStorage.get("sessionToken")
+            if (token == null) {
+                Log.d("MainActivity", "No session token found, going to greeting screen")
+                return@launch startWithDestination("login/greeting")
+            }
 
+            val id = kvStorage.get("sessionId") ?: ""
+
+            // FAST STARTUP: Set session headers immediately and navigate to main without delay
+            StoatAPI.setSessionHeader(token)
+            StoatAPI.setSessionId(id)
+
+            val destination = if (Experiments.usePolar.isEnabled) "main" else "chat"
+            Log.d("MainActivity", "Session token present, navigating immediately to $destination")
+            startWithDestination(destination)
+
+            // Connect socket and sync data in the background
+            viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    Log.d("MainActivity", "Onboarding state is complete, logging in")
                     StoatAPI.loginAs(token)
-                    StoatAPI.setSessionId(id)
-                    if (Experiments.usePolar.isEnabled) {
-                        startWithDestination("main")
-                    } else {
-                        startWithDestination("chat")
-                    }
                 } catch (e: Exception) {
-                    Log.e("MainActivity", "Failed to login immediately, proceeding to chat with auto-reconnect", e)
-                    startWithDestination("chat")
+                    Log.e("MainActivity", "Background login error", e)
+                    val msg = e.message.orEmpty()
+                    if (msg.contains("Unauthorized") || msg.contains("InvalidSession") || msg.contains("Forbidden")) {
+                        couldNotLogIn.emit(true)
+                    }
                 }
             }
         }
