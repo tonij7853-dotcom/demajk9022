@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -41,6 +42,12 @@ import chat.stoat.api.routes.user.fetchUserProfile
 import chat.stoat.composables.generic.RemoteImage
 import chat.stoat.composables.generic.UserAvatar
 import chat.stoat.composables.generic.presenceFromStatus
+import chat.stoat.composables.profile.CosmeticEffectOverlay
+import chat.stoat.composables.profile.Nameplate
+import chat.stoat.composables.profile.ProfileCosmeticsStore
+import chat.stoat.composables.profile.bannerBrush
+import chat.stoat.composables.profile.bannerOverlay
+import chat.stoat.persistence.KVStorage
 import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.core.model.schemas.AutumnResource
 import chat.stoat.core.model.schemas.Profile
@@ -81,6 +88,17 @@ fun RawUserOverview(
     internalPadding: Boolean = true
 ) {
     val context = LocalContext.current
+    val cosmetics by ProfileCosmeticsStore.current
+    val isSelf = user.id != null && user.id == StoatAPI.selfId
+    LaunchedEffect(user.id, isSelf) {
+        if (isSelf) {
+            ProfileCosmeticsStore.load(KVStorage(context), user.id!!)
+        }
+    }
+    val avatarDecoration = if (isSelf) cosmetics.avatarDecoration else "none"
+    val profileEffect = if (isSelf) cosmetics.profileEffect else "none"
+    val nameplate = if (isSelf) cosmetics.nameplate else "none"
+    val chosenBanner = if (isSelf) bannerBrush(cosmetics.bannerStyle) else null
     var teamMemberFlair by remember { mutableStateOf<Brush?>(null) }
 
     LaunchedEffect(user) {
@@ -145,10 +163,25 @@ fun RawUserOverview(
         } else {
             Box(
                 modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .background(chosenBanner ?: Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.colorScheme.surfaceContainer)))
                     .height(128.dp)
                     .fillMaxWidth()
             )
+        }
+
+        if (background != null) {
+            bannerOverlay(cosmetics.bannerStyle)?.let { brush ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(128.dp)
+                        .background(brush)
+                )
+            }
+        }
+
+        if (profileEffect != "none") {
+            CosmeticEffectOverlay(profileEffect, Modifier.fillMaxWidth().height(128.dp))
         }
 
         Row(
@@ -163,12 +196,15 @@ fun RawUserOverview(
                 userId = user.id ?: ULID.makeSpecial(0),
                 avatar = user.avatar,
                 size = 48.dp,
+                decorationId = avatarDecoration,
                 presence = presenceFromStatus(user.status?.presence, user.online ?: false)
             )
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            Text(
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                if (nameplate != "none") Nameplate(nameplate, Modifier.matchParentSize())
+                Text(
                 text = AnnotatedString.Builder().apply {
                     // make sure
                     // - the display name is not null or blank
@@ -187,8 +223,9 @@ fun RawUserOverview(
                 color = contentColour,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+                modifier = Modifier.padding(horizontal = if (nameplate == "none") 0.dp else 8.dp, vertical = if (nameplate == "none") 0.dp else 4.dp)
+                )
+            }
 
             pronouns?.let {
                 Spacer(modifier = Modifier.width(8.dp))
