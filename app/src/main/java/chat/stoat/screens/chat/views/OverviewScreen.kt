@@ -31,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.Scaffold
@@ -41,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -56,11 +58,14 @@ import androidx.navigation.NavController
 import chat.stoat.R
 import chat.stoat.api.StoatAPI
 import chat.stoat.api.routes.user.fetchSelf
-import chat.stoat.composables.generic.ListHeader
+import chat.stoat.api.routes.user.fetchUserProfile
+import chat.stoat.composables.markdown.prose.ChatMarkdown
 import chat.stoat.composables.generic.NonIdealState
-import chat.stoat.composables.screens.settings.UserOverview
+import chat.stoat.composables.screens.settings.RawUserOverview
 import chat.stoat.composables.skeletons.UserOverviewSkeleton
 import chat.stoat.core.model.schemas.User
+import chat.stoat.core.model.schemas.Profile
+import chat.stoat.api.internals.ULID
 import chat.stoat.internals.extensions.zero
 import chat.stoat.screens.chat.LocalIsConnected
 import chat.stoat.screens.settings.SettingsScreenViewModel
@@ -68,6 +73,8 @@ import chat.stoat.sheets.UserCardSheet
 import chat.stoat.updater.DismodUpdater
 import io.sentry.Sentry
 import org.koin.androidx.compose.koinViewModel
+import java.text.DateFormat
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,6 +90,7 @@ fun OverviewScreen(
 
     var isLoading by rememberSaveable { mutableStateOf(true) }
     var user by rememberSaveable { mutableStateOf<User?>(null) }
+    var profile by remember { mutableStateOf<Profile?>(null) }
 
     LaunchedEffect(Unit) {
         val inCache = StoatAPI.userCache[StoatAPI.selfId]
@@ -100,6 +108,15 @@ fun OverviewScreen(
                 Sentry.captureException(e)
                 isLoading = false
             }
+        }
+    }
+
+    LaunchedEffect(user?.id) {
+        val id = user?.id ?: return@LaunchedEffect
+        try {
+            profile = fetchUserProfile(id)
+        } catch (e: Exception) {
+            Log.w("OverviewScreen", "Failed to load profile details", e)
         }
     }
 
@@ -196,7 +213,7 @@ fun OverviewScreen(
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            UserOverview(u, internalPadding = false)
+                            RawUserOverview(u, profile, internalPadding = false, cardHeight = 220.dp)
                         }
                     }
                 }
@@ -248,104 +265,29 @@ fun OverviewScreen(
                     }
                 }
 
-                // Account Category
-                ListHeader {
-                    Text(stringResource(R.string.settings_category_account))
-                }
-                OverviewListItem(
-                    first = true,
-                    title = stringResource(R.string.settings_account),
-                    icon = R.drawable.ic_lock_24dp,
-                    onClick = { navController.navigate("settings/account") }
-                )
-                Spacer(Modifier.height(2.dp))
-                OverviewListItem(
-                    title = stringResource(R.string.settings_profile),
-                    icon = R.drawable.ic_id_card_24dp,
-                    onClick = { navController.navigate("settings/profile") }
-                )
-                Spacer(Modifier.height(2.dp))
-                OverviewListItem(
-                    last = true,
-                    title = stringResource(R.string.settings_sessions),
-                    icon = R.drawable.ic_devices_24dp,
-                    onClick = { navController.navigate("settings/sessions") }
-                )
-
-                // App Settings Category
-                ListHeader {
-                    Text(stringResource(R.string.settings_category_general))
-                }
-                OverviewListItem(
-                    first = true,
-                    title = stringResource(R.string.settings_appearance),
-                    icon = R.drawable.ic_palette_24dp,
-                    onClick = { navController.navigate("settings/appearance") }
-                )
-                Spacer(Modifier.height(2.dp))
-                OverviewListItem(
-                    title = stringResource(R.string.settings_notifications),
-                    icon = R.drawable.ic_notifications_24dp,
-                    onClick = { navController.navigate("settings/notifications") }
-                )
-                Spacer(Modifier.height(2.dp))
-                OverviewListItem(
-                    title = stringResource(R.string.settings_chat),
-                    icon = R.drawable.ic_chat_24dp,
-                    onClick = { navController.navigate("settings/chat") }
-                )
-                Spacer(Modifier.height(2.dp))
-                OverviewListItem(
-                    last = true,
-                    title = stringResource(R.string.settings_language),
-                    icon = R.drawable.ic_language_24dp,
-                    onClick = { navController.navigate("settings/language") }
-                )
-
-                // Dismod Category
-                ListHeader {
-                    Text("Dismod")
-                }
-                OverviewListItem(
-                    first = true,
-                    title = stringResource(R.string.settings_changelog),
-                    icon = R.drawable.ic_campaign_24dp,
-                    onClick = { navController.navigate("changelog/latest") }
-                )
-                Spacer(Modifier.height(2.dp))
-                OverviewListItem(
-                    title = "Check for Updates",
-                    icon = R.drawable.ic_download_24dp,
-                    onClick = {
-                        DismodUpdater.checkForUpdates(context, scope, notifyIfNoUpdate = true)
-                    }
-                )
-                Spacer(Modifier.height(2.dp))
-                OverviewListItem(
-                    last = true,
-                    title = stringResource(R.string.about),
-                    icon = R.drawable.ic_info_24dp,
-                    onClick = { navController.navigate("about") }
-                )
-
-                // Logout
-                Spacer(Modifier.height(16.dp))
-                OverviewListItem(
-                    first = true,
-                    last = true,
-                    danger = true,
-                    title = stringResource(R.string.logout),
-                    icon = R.drawable.ic_logout_24dp,
-                    onClick = {
-                        settingsViewModel.logout()
-                        navController.navigate("login/greeting") {
-                            popUpTo("chat") {
-                                inclusive = true
-                            }
+                profile?.content?.takeIf { it.isNotBlank() }?.let { bio ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.surfaceContainer
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("About me", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.height(8.dp))
+                            ChatMarkdown(content = bio)
                         }
                     }
-                )
-                Spacer(Modifier.height(32.dp))
+                }
+
+                user?.id?.let { id ->
+                    Text(
+                        text = "Member since ${DateFormat.getDateInstance().format(Date(ULID.asTimestamp(id)))}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                    )
+                }
+                Spacer(Modifier.height(24.dp))
             }
         }
     }
