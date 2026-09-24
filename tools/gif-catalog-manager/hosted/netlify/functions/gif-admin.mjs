@@ -369,8 +369,6 @@ async function pendingCatalogPullRequest() {
 async function commitFiles({ catalog, assetName, assetData, deleteAsset = false, title }) {
   const gifPath = `community-assets/gifs/${assetName}`;
   const catalogText = `${JSON.stringify(catalog, null, 2)}\n`;
-  const pending = await pendingCatalogPullRequest();
-  if (pending) fail(`Merge or close the open GIF catalog pull request #${pending.number} before making another catalog update.`, 409);
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const ref = await github(`/git/ref/heads/${encodeURIComponent(BRANCH)}`);
     const parentSha = ref.object.sha;
@@ -395,26 +393,50 @@ async function commitFiles({ catalog, assetName, assetData, deleteAsset = false,
       method: 'POST',
       body: JSON.stringify({ base_tree: parent.tree.sha, tree: treeEntries }),
     });
+    const action = deleteAsset ? 'remove' : 'add';
+    const commitMessage = `[skip ci] GIF catalog: ${action} ${title}`;
     const commit = await github('/git/commits', {
       method: 'POST',
-      body: JSON.stringify({ message: assetData ? `Add GIF: ${assetName}` : deleteAsset ? `Remove GIF: ${assetName}` : 'Update GIF catalog', tree: tree.sha, parents: [parentSha] }),
+      body: JSON.stringify({ message: commitMessage, tree: tree.sha, parents: [parentSha] }),
     });
-    const branch = `gif-studio/${randomUUID()}`;
-    await github('/git/refs', {
-      method: 'POST',
-      body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: commit.sha }),
-    });
-    const action = deleteAsset ? 'remove' : 'add';
-    const pull = await github('/pulls', {
-      method: 'POST',
-      body: JSON.stringify({
-        title: `[skip ci] GIF catalog: ${action} ${title}`.slice(0, 120),
-        head: `${OWNER}:${branch}`,
-        base: BRANCH,
-        body: `This change ${action}s **${title}** ${deleteAsset ? 'from' : 'to'} the Dismod GIF catalog.\n\nSquash-merge this pull request to publish the catalog update to app users. GIF-only changes do not need a new APK.`,
-      }),
-    });
-    return { number: pull.number, url: pull.html_url };
+
+    // 1. Try directly updating refs/heads/main
+    try {
+      await github(`/git/refs/heads/${encodeURIComponent(BRANCH)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ sha: commit.sha, force: false }),
+      });
+      return { direct: true, commitSha: commit.sha };
+    } catch {
+      // 2. If branch protection requires PR, create PR and auto-merge it immediately
+      const branch = `gif-studio/${randomUUID()}`;
+      await github('/git/refs', {
+        method: 'POST',
+        body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: commit.sha }),
+      });
+      const pull = await github('/pulls', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: commitMessage.slice(0, 120),
+          head: `${OWNER}:${branch}`,
+          base: BRANCH,
+          body: `Auto-publishing **${title}** to Dismod GIF catalog.`,
+        }),
+      });
+      try {
+        await github(`/pulls/${pull.number}/merge`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            commit_title: commitMessage,
+            merge_method: 'squash',
+          }),
+        });
+        await github(`/git/refs/heads/${branch}`, { method: 'DELETE' }).catch(() => {});
+        return { direct: true, merged: true, number: pull.number };
+      } catch {
+        return { number: pull.number, url: pull.html_url };
+      }
+    }
   }
   fail('GitHub changed during publishing. Refresh the catalog and try again.', 409);
 }

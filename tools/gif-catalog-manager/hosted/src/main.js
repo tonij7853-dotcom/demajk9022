@@ -168,7 +168,7 @@ $('#gif-form').addEventListener('submit', async (event) => {
     }
     details.hidden = false;
     $('#publish-button').disabled = Boolean(pendingUpdate);
-    setStatus('Preview ready. Add it to create the publish pull request.', 'success');
+    setStatus('Preview ready. Click "Add to Dismod App" to save it.', 'success');
   } catch (error) {
     stagedPreview = null;
     $('#preview-image').hidden = true;
@@ -187,7 +187,7 @@ $('#publish-button').addEventListener('click', async () => {
   busy = true;
   const button = $('#publish-button');
   button.disabled = true;
-  button.textContent = 'Publishing…';
+  button.textContent = 'Adding to app…';
   try {
     const result = await api('publish', {
       gifBase64: stagedPreview.gifBase64,
@@ -198,29 +198,38 @@ $('#publish-button').addEventListener('click', async () => {
       tags: $('#gif-tags').value.split(',').map((tag) => tag.trim()).filter(Boolean),
       rightsConfirmed: $('#rights-confirmed').checked,
     });
-    setStatus(`${result.title} is ready. Squash-merge pull request #${result.number} to publish it for app users. `, 'success');
-    const prLink = document.createElement('a');
-    prLink.href = result.url;
-    prLink.target = '_blank';
-    prLink.rel = 'noopener noreferrer';
-    prLink.textContent = 'Open pull request';
-    status.append(prLink);
+    if (result.direct) {
+      setStatus(`"${result.title}" added successfully! It is now live in your Dismod app.`, 'success');
+    } else {
+      setStatus(`"${result.title}" added to catalog. `, 'success');
+      if (result.url) {
+        const prLink = document.createElement('a');
+        prLink.href = result.url;
+        prLink.target = '_blank';
+        prLink.rel = 'noopener noreferrer';
+        prLink.textContent = 'View update';
+        status.append(prLink);
+      }
+    }
     $('#gif-url').value = '';
     $('#gif-title').value = '';
     $('#gif-title').dataset.edited = '';
     $('#gif-tags').value = '';
     $('#rights-confirmed').checked = false;
     stagedPreview = null;
+    stagedFileBase64 = null;
     $('#preview-image').hidden = true;
+    $('#preview-image').src = '';
     $('#preview-empty').hidden = false;
+    $('#preview-details').hidden = true;
     $('#preview-heading').textContent = 'Your GIF will appear here';
     await loadLibrary();
   } catch (error) {
-    setStatus(error.message || 'Publishing failed.', 'error');
+    setStatus(error.message || 'Adding GIF failed.', 'error');
   } finally {
     busy = false;
     button.disabled = !stagedPreview || Boolean(pendingUpdate);
-    button.textContent = 'Create publish PR →';
+    button.textContent = 'Add to Dismod App →';
   }
 });
 
@@ -296,13 +305,19 @@ $('#library-grid').addEventListener('click', async (event) => {
   button.disabled = true;
   try {
     const result = await api('delete', { id: button.dataset.id });
-    setStatus(`Removal is ready. Squash-merge pull request #${result.number} to publish it. `, 'success');
-    const prLink = document.createElement('a');
-    prLink.href = result.url;
-    prLink.target = '_blank';
-    prLink.rel = 'noopener noreferrer';
-    prLink.textContent = 'Open pull request';
-    status.append(prLink);
+    if (result.direct) {
+      setStatus('GIF removed from Dismod app catalog.', 'success');
+    } else {
+      setStatus(`Removal ready. Merge pull request #${result.number} to complete. `, 'success');
+      if (result.url) {
+        const prLink = document.createElement('a');
+        prLink.href = result.url;
+        prLink.target = '_blank';
+        prLink.rel = 'noopener noreferrer';
+        prLink.textContent = 'View pull request';
+        status.append(prLink);
+      }
+    }
     await loadLibrary();
   } catch (error) {
     button.disabled = false;
