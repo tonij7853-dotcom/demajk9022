@@ -139,7 +139,10 @@ import chat.stoat.api.internals.ChannelUtils
 import chat.stoat.api.internals.PermissionBit
 import chat.stoat.api.internals.has
 import chat.stoat.api.routes.channel.react
+import chat.stoat.api.routes.channel.sendMessage
 import chat.stoat.api.routes.microservices.autumn.FileArgs
+import chat.stoat.api.routes.microservices.autumn.uploadToAutumn
+import chat.stoat.api.internals.ULID
 import chat.stoat.callbacks.Action
 import chat.stoat.callbacks.ActionChannel
 import chat.stoat.composables.chat.DateDivider
@@ -182,6 +185,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
+import io.ktor.http.ContentType
 import org.koin.androidx.compose.koinViewModel
 import java.io.File
 import kotlin.math.max
@@ -695,7 +699,34 @@ fun ChannelScreen(
             onDismissRequest = { gifPickerSheetShown = false },
             onGifSelected = { uri ->
                 gifPickerSheetShown = false
-                processFileUri(uri, null)
+                val gifFile = uri.path?.let(::File)
+                if (gifFile == null || !gifFile.isFile) {
+                    scope.launch {
+                        snackbarHostState.showSnackbar("Couldn't prepare this GIF. Try again.")
+                    }
+                } else {
+                    scope.launch {
+                        try {
+                            val attachmentId = uploadToAutumn(
+                                file = gifFile,
+                                name = "${gifFile.nameWithoutExtension}.gif",
+                                tag = "attachments",
+                                contentType = ContentType.Image.GIF
+                            )
+                            sendMessage(
+                                channelId = channelId,
+                                content = "",
+                                nonce = ULID.makeNext(),
+                                attachments = listOf(attachmentId),
+                                idempotencyKey = ULID.makeNext()
+                            )
+                        } catch (_: Exception) {
+                            snackbarHostState.showSnackbar("Couldn't send this GIF. Try again.")
+                        } finally {
+                            gifFile.delete()
+                        }
+                    }
+                }
             }
         )
     }

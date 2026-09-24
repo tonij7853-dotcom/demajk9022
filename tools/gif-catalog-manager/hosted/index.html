@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="Admin-only GIF catalog manager for Dismod." />
+    <title>Dismod GIF Studio</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Dismod GIF Studio">
+          <span class="brand-mark">D</span><span>Dismod <span class="muted">GIF Studio</span></span>
+        </a>
+        <div class="session"><span id="account-label">Admin access required</span><button id="logout" class="button quiet" hidden>Sign out</button></div>
+      </header>
+
+      <section id="login-panel" class="login-panel panel">
+        <p class="eyebrow">PRIVATE ADMIN SITE</p>
+        <h1>Sign in to manage GIFs</h1>
+        <p class="muted-copy">Only accounts you invite and assign the <code>gif-admin</code> role can publish catalog changes.</p>
+        <form id="login-form">
+          <label for="email">Email</label><input id="email" type="email" autocomplete="username" required />
+          <label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required />
+          <button class="button primary" type="submit">Sign in</button>
+          <p id="login-status" class="status" role="status"></p>
+        </form>
+        <p class="hint">No public sign-up. The site owner invites people in Netlify Identity and assigns their role.</p>
+      </section>
+
+      <div id="admin-app" hidden>
+        <section class="intro">
+          <p class="eyebrow">ADMIN CATALOG</p>
+          <h1>Make your GIF picker yours.</h1>
+          <p class="muted-copy">Import a public Discord, Tenor, Giphy, or direct image link. Assign a named group and an emoji; the finished GIF is saved in Dismod and submitted as a pull request, so protected branches stay protected.</p>
+        </section>
+        <section class="workspace">
+          <form id="gif-form" class="panel import-panel">
+            <p class="eyebrow">NEW GIF</p><h2>Import from a link</h2>
+            <label for="gif-url">GIF or image link</label><input id="gif-url" type="url" inputmode="url" placeholder="https://…" required />
+            <p class="hint">Direct media and share pages with a public image preview are supported. Private or expired links will not import.</p>
+            <div class="field-grid">
+              <div><label for="gif-title">Name</label><input id="gif-title" type="text" maxlength="80" placeholder="Happy dance" required /></div>
+              <div><label for="gif-category">GIF group</label><input id="gif-category" type="text" maxlength="32" value="Reactions" required /></div>
+            </div>
+            <label for="gif-emoji">Group icon (emoji)</label><input id="gif-emoji" type="text" maxlength="8" value="🙂" />
+            <label for="gif-tags">Search tags <span class="muted">· comma separated</span></label><input id="gif-tags" type="text" maxlength="300" placeholder="happy, celebration, dance" />
+            <label class="permission-check"><input id="rights-confirmed" type="checkbox" /><span>I have permission to share this GIF with Dismod users.</span></label>
+            <div class="form-actions">
+              <button id="preview-button" class="button secondary" type="submit">Check &amp; preview</button>
+              <button id="publish-button" class="button primary" type="button" disabled>Create publish PR →</button>
+            </div>
+            <p id="form-status" class="status" role="status" aria-live="polite"></p>
+          </form>
+          <section class="panel preview-panel" aria-label="GIF preview">
+            <div class="panel-heading"><div><p class="eyebrow">PREVIEW</p><h2 id="preview-heading">Your GIF will appear here</h2></div><span class="badge">GIF</span></div>
+            <div class="preview-stage"><div id="preview-empty" class="preview-empty"><span class="preview-glyph">GIF</span><p>Check a link to see it animate</p><span>The file is normalized and checked before it enters the catalog.</span></div><img id="preview-image" alt="Imported GIF preview" hidden /></div>
+            <div id="preview-details" class="preview-details" hidden></div>
+            <p class="hint">The source URL is only used while importing. GIF data and catalog details are committed to this repository.</p>
+          </section>
+        </section>
+        <section class="library-section">
+          <div class="library-heading"><div><p class="eyebrow">SHARED WITH APP USERS</p><h2>Your Dismod GIFs <span id="gif-count" class="count">0</span></h2></div><button id="refresh-button" class="button quiet">Refresh</button></div>
+          <div id="pending-update" class="pending-update" hidden></div>
+          <div id="library-grid" class="library-grid"></div>
+          <p id="library-empty" class="library-empty" hidden>No GIFs yet. Import one above.</p>
+        </section>
+      </div>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
