@@ -13,6 +13,13 @@ import com.bumptech.glide.integration.compose.CrossFade
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
 
+import androidx.compose.runtime.compositionLocalOf
+import com.bumptech.glide.load.DecodeFormat
+import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
+
+val LocalAllowGifAnimation = compositionLocalOf { true }
+
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun RemoteImage(
@@ -25,6 +32,8 @@ fun RemoteImage(
     allowAnimation: Boolean = true
 ) {
     val context = LocalContext.current
+    val ambientAnimation = LocalAllowGifAnimation.current
+    val shouldAnimate = allowAnimation && ambientAnimation
 
     fun pxAsDp(px: Int): Dp {
         return (
@@ -44,7 +53,13 @@ fun RemoteImage(
             .then(if (height > 0) Modifier.height(pxAsDp(height)) else Modifier),
         transition = CrossFade,
         requestBuilderTransform = { rb ->
-            if (!allowAnimation) rb.dontAnimate() else rb
+            rb.diskCacheStrategy(DiskCacheStrategy.DATA)
+                .downsample(DownsampleStrategy.AT_MOST)
+                .format(DecodeFormat.PREFER_RGB_565)
+            if (width > 0 && height > 0) {
+                rb.override(width, height)
+            }
+            if (!shouldAnimate) rb.dontAnimate() else rb
         }
     )
 }

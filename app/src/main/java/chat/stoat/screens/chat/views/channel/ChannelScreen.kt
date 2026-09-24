@@ -151,6 +151,7 @@ import chat.stoat.composables.chat.MessageField
 import chat.stoat.composables.chat.SystemMessage
 import chat.stoat.composables.emoji.EmojiPicker
 import chat.stoat.composables.generic.GroupIcon
+import chat.stoat.composables.generic.LocalAllowGifAnimation
 import chat.stoat.composables.generic.PresenceBadge
 import chat.stoat.composables.generic.UserAvatar
 import chat.stoat.composables.generic.UserAvatarWidthPlaceholder
@@ -1031,12 +1032,15 @@ fun ChannelScreen(
                                 }
                             }
 
-                            LazyColumn(
-                                state = lazyListState,
-                                userScrollEnabled = !disableScroll,
-                                reverseLayout = true,
-                                contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp)
+                            CompositionLocalProvider(
+                                LocalAllowGifAnimation provides !lazyListState.isScrollInProgress
                             ) {
+                                LazyColumn(
+                                    state = lazyListState,
+                                    userScrollEnabled = !disableScroll,
+                                    reverseLayout = true,
+                                    contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp)
+                                ) {
                                 if (showBottomAnchor) {
                                     // Hack - Too bad!
                                     item(key = "guaranteed_first") {
@@ -1381,6 +1385,7 @@ fun ChannelScreen(
                                 }
                             }
                         }
+                    }
 
                         Column(
                             modifier = Modifier

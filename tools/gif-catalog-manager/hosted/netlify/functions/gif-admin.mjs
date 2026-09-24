@@ -270,17 +270,17 @@ async function normalizeGif(data) {
     if (frameWidth * frameHeight > 20_000_000) fail('That image is too large to convert safely.');
     if (totalPixels > MAX_ANIMATION_PIXELS) fail('That animation is too large to convert safely.');
 
-    if (metadata.format === 'gif' && data.byteLength <= MAX_OUTPUT && frameWidth <= 1024 && frameHeight <= 1024) {
+    if (metadata.format === 'gif' && data.byteLength <= 2 * 1024 * 1024 && frameWidth <= 420 && frameHeight <= 420 && frames <= 50) {
       return { data, width: frameWidth, height: frameHeight, frames };
     }
 
     const candidateConfigs = [];
-    if (frames > 100 || data.byteLength > 12 * 1024 * 1024) {
+    if (frames > 80 || data.byteLength > 10 * 1024 * 1024) {
       candidateConfigs.push({ width: 320, colours: 160 }, { width: 280, colours: 128 }, { width: 240, colours: 96 });
-    } else if (frames > 50 || data.byteLength > 6 * 1024 * 1024) {
-      candidateConfigs.push({ width: 480, colours: 256 }, { width: 360, colours: 192 }, { width: 280, colours: 128 });
+    } else if (frames > 40 || data.byteLength > 5 * 1024 * 1024) {
+      candidateConfigs.push({ width: 380, colours: 224 }, { width: 320, colours: 160 }, { width: 260, colours: 128 });
     } else {
-      candidateConfigs.push({ width: 720, colours: 256 }, { width: 480, colours: 256 }, { width: 360, colours: 192 }, { width: 280, colours: 128 });
+      candidateConfigs.push({ width: 420, colours: 256 }, { width: 360, colours: 224 }, { width: 300, colours: 160 });
     }
 
     let finalData = null;
