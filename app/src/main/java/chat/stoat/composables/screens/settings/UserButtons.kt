@@ -88,6 +88,28 @@ fun UserButtons(
         when (user.relationship) {
             "None" -> {
                 if (user.bot == null) {
+                    FilledTonalButton(
+                        onClick = {
+                            scope.launch {
+                                val dm = openDM(user.id!!)
+                                if (dm.id != null) {
+                                    if (StoatAPI.channelCache[dm.id] == null)
+                                        StoatAPI.channelCache[dm.id!!] = dm
+                                    ActionChannel.send(Action.SwitchChannel(dm.id!!))
+                                    dismissSheet()
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.user_info_sheet_failed_to_open_dm),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(stringResource(R.string.user_info_sheet_send_message))
+                    }
                     Button(
                         onClick = {
                             scope.launch {

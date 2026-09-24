@@ -192,8 +192,17 @@ fun RegularMessage(
                 }
             },
             onNameClick = {
-                val author = message.author?.let { StoatAPI.userCache[it] } ?: return@Message
-                putTextAtCursorPosition("@${author.username}#${author.discriminator}")
+                if (message.webhook != null) {
+                    scope.launch {
+                        ActionChannel.send(Action.OpenWebhookSheet)
+                    }
+                } else {
+                    message.author?.let { author ->
+                        scope.launch {
+                            ActionChannel.send(Action.OpenUserSheet(author, channel?.server))
+                        }
+                    }
+                }
             },
             canReply = true,
             onReply = {
