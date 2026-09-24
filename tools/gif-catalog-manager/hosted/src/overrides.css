@@ -1,0 +1,22 @@
+.pending-update {
+  margin-bottom: 16px;
+  border: 1px solid #554b80;
+  border-radius: 11px;
+  padding: 12px 14px;
+  color: #ddd8f4;
+  background: #221f31;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.pending-update a,
+.status a {
+  color: #c0afff;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.delete-gif:disabled {
+  cursor: not-allowed;
+  opacity: .4;
+}
