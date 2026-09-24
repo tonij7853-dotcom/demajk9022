@@ -238,5 +238,5 @@ suspend fun authenticateWithMfaRecoveryCode(
 }
 
 fun friendlySessionName(): String {
-    return "Stoat for Android on ${Build.MANUFACTURER} ${Build.MODEL}"
+    return "Dismod for Android on ${Build.MANUFACTURER} ${Build.MODEL}"
 }

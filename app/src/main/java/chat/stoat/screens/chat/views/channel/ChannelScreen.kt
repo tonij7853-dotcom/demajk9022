@@ -937,7 +937,7 @@ fun ChannelScreen(
                                     }
                                     Spacer(modifier = Modifier.height(16.dp))
                                     Text(
-                                        text = stringResource(R.string.channel_empty_welcome, channelName.ifEmpty { "Stoat" }),
+                                        text = stringResource(R.string.channel_empty_welcome, channelName.ifEmpty { "Dismod" }),
                                         style = MaterialTheme.typography.titleLarge.copy(
                                             fontFamily = chat.stoat.ui.theme.Newsreader,
                                             fontSize = 20.sp,

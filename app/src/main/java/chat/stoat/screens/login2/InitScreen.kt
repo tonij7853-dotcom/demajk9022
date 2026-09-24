@@ -99,13 +99,10 @@ private fun LeadPart(windowSizeClass: WindowSizeClass) {
             Spacer(Modifier.height(64.dp))
         }
         Image(
-            painter = painterResource(R.drawable.stoat_logo_white),
-            contentDescription = null,
-            colorFilter = ColorFilter.tint(
-                MaterialTheme.colorScheme.onBackground
-            ),
+            painter = painterResource(R.drawable.dismod_logo),
+            contentDescription = "Dismod",
             modifier = if (windowSizeClass.widthSizeClass <= WindowWidthSizeClass.Compact)
-                Modifier.fillMaxWidth(0.5f) else Modifier.height(32.dp)
+                Modifier.fillMaxWidth(0.35f) else Modifier.height(48.dp)
         )
         Spacer(modifier = Modifier.height(64.dp))
         Text(
@@ -115,7 +112,7 @@ private fun LeadPart(windowSizeClass: WindowSizeClass) {
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            "Stoat is the chat app that’s truly built with you in mind.", // FIXME hardcoded string
+            "Dismod is the chat app that’s truly built with you in mind.", // FIXME hardcoded string
             style = MaterialTheme.typography.bodyLarge,
             fontSize = 18.sp,
             textAlign = TextAlign.Center
@@ -167,15 +164,6 @@ private fun LinkPart(windowSizeClass: WindowSizeClass) {
             url = "$STOAT_MARKETING/aup"
         )
 
-        if (BuildConfig.DEBUG) {
-            AnyLink(
-                text = "Debug: Chucker",
-                action = {
-                    Chucker.getLaunchIntent(context).apply {
-                        context.startActivity(this)
-                    }
-                }
-            )
-        }
+
     }
 }

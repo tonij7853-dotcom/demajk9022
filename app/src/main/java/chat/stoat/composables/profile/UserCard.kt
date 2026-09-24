@@ -361,7 +361,7 @@ fun UserCard(
                 }
 
                 Text(
-                    "stoat.chat",
+                    "Dismod",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier

@@ -349,10 +349,9 @@ fun SettingsScreen(
                             .testTag("settings_view_feedback")
                             .clickable {
                                 val intent = Intent(
-                                    context,
-                                    InviteActivity::class.java
-                                ).setAction(Intent.ACTION_VIEW)
-                                intent.data = "https://stt.gg/Testers".toUri()
+                                    Intent.ACTION_VIEW,
+                                    "https://github.com/tonij7853-dotcom/demajk9022/issues".toUri()
+                                )
                                 context.startActivity(intent)
                             }
                     )

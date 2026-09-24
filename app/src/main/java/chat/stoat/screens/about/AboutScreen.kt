@@ -247,7 +247,7 @@ fun AboutScreen(navController: NavController, viewModel: AboutViewModel = viewMo
                                     scope.launch {
                                         clipboard.setClipEntry(
                                             ClipData.newPlainText(
-                                                "Stoat Debug Information",
+                                                "Dismod Debug Information",
                                                 StoatJson.encodeToString(viewModel.debugInfo)
                                             ).toClipEntry()
                                         )

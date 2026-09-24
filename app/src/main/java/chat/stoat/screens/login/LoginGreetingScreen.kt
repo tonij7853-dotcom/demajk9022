@@ -195,16 +195,7 @@ fun LoginGreetingScreen(navController: NavController) {
                     text = stringResource(R.string.community_guidelines),
                     url = "$STOAT_MARKETING/aup"
                 )
-                if (BuildConfig.DEBUG) {
-                    AnyLink(
-                        text = "Debug: Chucker",
-                        action = {
-                            Chucker.getLaunchIntent(context).apply {
-                                context.startActivity(this)
-                            }
-                        }
-                    )
-                }
+
             }
         }
     }
