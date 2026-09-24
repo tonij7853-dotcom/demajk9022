@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import chat.stoat.R
 import chat.stoat.api.settings.LoadedSettings
+import chat.stoat.composables.profile.AvatarDecoration
 import chat.stoat.core.model.data.STOAT_BASE
 import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.core.model.schemas.AutumnResource
@@ -142,6 +143,7 @@ fun UserAvatar(
     presenceSize: Dp = 16.dp,
     shape: Shape = RoundedCornerShape(LoadedSettings.avatarRadius),
     allowAnimation: Boolean = true,
+    decorationId: String = "none",
     onLongClick: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
@@ -206,6 +208,8 @@ fun UserAvatar(
                     )
             )
         }
+
+        AvatarDecoration(decorationId, Modifier.fillMaxSize())
 
         if (presence != null) {
             PresenceBadge(presence, size = presenceSize)
