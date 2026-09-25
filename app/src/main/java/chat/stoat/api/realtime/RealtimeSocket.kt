@@ -46,6 +46,7 @@ import chat.stoat.api.routes.server.fetchMember
 import chat.stoat.api.settings.LoadedSettings
 import chat.stoat.api.settings.SyncedSettings
 import chat.stoat.c2dm.ChannelRegistrator
+import chat.stoat.c2dm.DismodNotificationPoster
 import chat.stoat.core.model.data.STOAT_WEBSOCKET
 import chat.stoat.core.model.schemas.Channel
 import chat.stoat.core.model.schemas.ChannelType
@@ -310,6 +311,7 @@ object RealtimeSocket {
                         StoatAPI.channelCache[it]!!.copy(lastMessageID = messageFrame.id)
 
                     StoatAPI.wsFrameChannel.emit(messageFrame)
+                    DismodNotificationPoster.postMessageNotification(StoatApplication.instance, messageFrame)
                 }
             }
 
@@ -510,6 +512,11 @@ object RealtimeSocket {
                 } else {
                     Log.w("RealtimeSocket", "Invalid UserRelationship frame: $rawFrame")
                 }
+
+                DismodNotificationPoster.postFriendRequestNotification(
+                    StoatApplication.instance,
+                    userRelationshipFrame
+                )
             }
 
             "ChannelUpdate" -> {

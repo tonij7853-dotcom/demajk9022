@@ -314,6 +314,7 @@ class MainActivity : AppCompatActivity() {
     // See the other one in DefaultDestinationScreen.kt
     override fun onResume() {
         super.onResume()
+        chat.stoat.c2dm.ActiveChannelTracker.isAppInForeground = true
         @Suppress("DEPRECATION") // no Compose-side equivalent for this window flag
         window.statusBarColor = Color.Transparent.toArgb()
 
@@ -322,6 +323,11 @@ class MainActivity : AppCompatActivity() {
             lastUpdateCheckTime = now
             DismodUpdater.checkForUpdates(this, lifecycleScope)
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        chat.stoat.c2dm.ActiveChannelTracker.isAppInForeground = false
     }
 
     // Same as above for configuration changes (rotation, dark mode, etc.)

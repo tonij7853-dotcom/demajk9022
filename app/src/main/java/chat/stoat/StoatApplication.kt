@@ -32,6 +32,7 @@ class StoatApplication : Application(), SingletonImageLoader.Factory {
         }
 
         instance = this
+        chat.stoat.c2dm.ChannelRegistrator(this).register()
         chat.stoat.internals.CustomNicknames.init(this)
 
         startKoin {

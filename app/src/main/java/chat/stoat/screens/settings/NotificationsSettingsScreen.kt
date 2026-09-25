@@ -52,6 +52,10 @@ class NotificationsSettingsScreenViewModel(
         private set
 
     init {
+        refresh()
+    }
+
+    fun refresh() {
         viewModelScope.launch {
             isPushEnabled = checkPushEnabled()
         }
@@ -59,41 +63,59 @@ class NotificationsSettingsScreenViewModel(
 
     private suspend fun checkPushEnabled(): Boolean {
         val hasPermission = NotificationManagerCompat.from(context).areNotificationsEnabled()
-        val hasToken = kvStorage.get("fcmToken") != null
-        return hasPermission && hasToken
+        val isEnabledInKv = kvStorage.getBoolean("notifications_enabled") ?: true
+        return hasPermission && isEnabledInKv
     }
 
     fun onEnableRequested() {
-        showRationale = true
+        val hasPermission = NotificationManagerCompat.from(context).areNotificationsEnabled()
+        if (!hasPermission) {
+            showRationale = true
+        } else {
+            enableNotifications()
+        }
+    }
+
+    fun enableNotifications() {
+        viewModelScope.launch {
+            kvStorage.set("notifications_enabled", true)
+            kvStorage.remove("pushNotificationsRejected")
+            isPushEnabled = true
+            showRationale = false
+            runCatching { subscribeIfNeeded() }
+        }
     }
 
     fun subscribeIfNeeded() {
         if (isUpdating) return
         isUpdating = true
-        FirebaseMessaging.getInstance().token.addOnCompleteListener(
-            OnCompleteListener { task ->
-                if (!task.isSuccessful) {
-                    isUpdating = false
-                    return@OnCompleteListener
-                }
-                val newToken = task.result
-                viewModelScope.launch {
-                    try {
-                        val existingToken = kvStorage.get("fcmToken")
-                        if (existingToken != newToken) {
-                            subscribePush(auth = newToken)
-                            kvStorage.set("fcmToken", newToken)
-                        }
-                        kvStorage.remove("pushNotificationsRejected")
-                        isPushEnabled = checkPushEnabled()
-                    } catch (e: Exception) {
-                        // subscribe failed, leave state unchanged
-                    } finally {
+        try {
+            FirebaseMessaging.getInstance().token.addOnCompleteListener(
+                OnCompleteListener { task ->
+                    if (!task.isSuccessful) {
                         isUpdating = false
+                        return@OnCompleteListener
+                    }
+                    val newToken = task.result
+                    viewModelScope.launch {
+                        try {
+                            val existingToken = kvStorage.get("fcmToken")
+                            if (existingToken != newToken) {
+                                subscribePush(auth = newToken)
+                                kvStorage.set("fcmToken", newToken)
+                            }
+                            kvStorage.remove("pushNotificationsRejected")
+                        } catch (e: Exception) {
+                            // subscribe failed, ignore
+                        } finally {
+                            isUpdating = false
+                        }
                     }
                 }
-            }
-        )
+            )
+        } catch (e: Exception) {
+            isUpdating = false
+        }
     }
 
     fun disablePush() {
@@ -101,12 +123,13 @@ class NotificationsSettingsScreenViewModel(
         isUpdating = true
         viewModelScope.launch {
             try {
+                kvStorage.set("notifications_enabled", false)
+                kvStorage.set("pushNotificationsRejected", true)
                 val token = kvStorage.get("fcmToken")
                 if (token != null) {
                     runCatching { unsubscribePush() }
                     kvStorage.remove("fcmToken")
                 }
-                kvStorage.set("pushNotificationsRejected", true)
                 isPushEnabled = false
             } finally {
                 isUpdating = false
@@ -125,17 +148,20 @@ fun NotificationsSettingsScreen(
     val askNotificationsPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (isGranted) viewModel.subscribeIfNeeded()
+        if (isGranted) {
+            viewModel.enableNotifications()
+        }
     }
 
     if (viewModel.showRationale) {
         NotificationRationaleDialog(
             onSelected = { accepted ->
+                viewModel.showRationale = false
                 if (accepted) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         askNotificationsPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                     } else {
-                        viewModel.subscribeIfNeeded()
+                        viewModel.enableNotifications()
                     }
                 }
             },

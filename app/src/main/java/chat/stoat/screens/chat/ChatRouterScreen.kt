@@ -239,6 +239,8 @@ class ChatRouterViewModel(
 
     fun setSaveDestination(destination: ChatRouterDestination) {
         currentDestination = destination
+        chat.stoat.c2dm.ActiveChannelTracker.activeChannelId =
+            (destination as? ChatRouterDestination.Channel)?.channelId
 
         viewModelScope.launch {
             kvStorage.set("currentDestination", destination.asSerialisedString())
