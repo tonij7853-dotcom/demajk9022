@@ -85,6 +85,9 @@ class HandlerService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(fcmMessage: RemoteMessage) {
+        if (ActiveChannelTracker.isAppInForeground) {
+            return
+        }
         val data = fcmMessage.data
 
         val type = data["type"]

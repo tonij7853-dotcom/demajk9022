@@ -48,6 +48,7 @@ enum class UnicodeEmojiSection(val googleName: String, val nameResource: Int) {
 sealed class Category {
     data class UnicodeEmojiCategory(val definition: UnicodeEmojiSection) : Category()
     data class ServerEmoteCategory(val server: Server) : Category()
+    data class DismodEmojiCategory(val name: String, val emoji: String) : Category()
 }
 
 sealed class EmojiPickerItem {
@@ -59,6 +60,7 @@ sealed class EmojiPickerItem {
     ) : EmojiPickerItem()
 
     data class ServerEmote(val emote: chat.stoat.core.model.schemas.Emoji) : EmojiPickerItem()
+    data class DismodEmoji(val item: DismodEmojiItem) : EmojiPickerItem()
 }
 
 class EmojiImpl {
@@ -98,15 +100,20 @@ class EmojiImpl {
     fun flatPickerList(): List<EmojiPickerItem> {
         val list = mutableListOf<EmojiPickerItem>()
 
-        for (server in serversWithEmotes()) {
-            list.addAll(serverEmoteList(server))
+        val dismodEmojis = DismodEmojiManager.getAllEmojis()
+        if (dismodEmojis.isNotEmpty()) {
+            val packs = DismodEmojiManager.getPacks()
+            for ((packName, packEmoji) in packs) {
+                val inPack = dismodEmojis.filter { it.category == packName }
+                if (inPack.isNotEmpty()) {
+                    list.add(EmojiPickerItem.Section(Category.DismodEmojiCategory(packName, packEmoji)))
+                    list.addAll(inPack.map { EmojiPickerItem.DismodEmoji(it) })
+                }
+            }
         }
 
-        for (group in metadata) {
-            val category =
-                UnicodeEmojiSection.entries.find { it.googleName == group.group } ?: continue
-            list.add(EmojiPickerItem.Section(Category.UnicodeEmojiCategory(category)))
-            list.addAll(group.emoji.flatMap { emoji -> emojiToPickerItems(emoji) })
+        for (server in serversWithEmotes()) {
+            list.addAll(serverEmoteList(server))
         }
 
         return list
@@ -167,6 +174,18 @@ class EmojiImpl {
     fun categorySpans(flatPickerList: List<EmojiPickerItem>): Map<Category, Pair<Int, Int>> {
         val output = mutableMapOf<Category, Pair<Int, Int>>()
 
+        val packs = DismodEmojiManager.getPacks()
+        for ((packName, packEmoji) in packs) {
+            val cat = Category.DismodEmojiCategory(packName, packEmoji)
+            val index = flatPickerList.indexOfFirst {
+                it is EmojiPickerItem.Section && it.category == cat
+            }
+            if (index >= 0) {
+                val count = DismodEmojiManager.getAllEmojis().count { it.category == packName }
+                output[cat] = Pair(index, index + count)
+            }
+        }
+
         for (server in serversWithEmotes()) {
             val index =
                 flatPickerList.indexOfFirst {
@@ -177,21 +196,6 @@ class EmojiImpl {
             val lastIndex = index + allEmotesInThatServer.size
 
             output[Category.ServerEmoteCategory(server)] = Pair(index, lastIndex)
-        }
-        for (section in UnicodeEmojiSection.entries) {
-            val index =
-                flatPickerList.indexOfFirst {
-                    it is EmojiPickerItem.Section && it.category is Category.UnicodeEmojiCategory && it.category.definition == section
-                }
-            val lastIndex = if (section == UnicodeEmojiSection.entries.last()) {
-                Int.MAX_VALUE
-            } else {
-                val nextSection = UnicodeEmojiSection.entries[section.ordinal + 1]
-                flatPickerList.indexOfFirst {
-                    it is EmojiPickerItem.Section && it.category is Category.UnicodeEmojiCategory && it.category.definition == nextSection
-                } - 1
-            }
-            output[Category.UnicodeEmojiCategory(section)] = Pair(index, lastIndex)
         }
 
         return output
@@ -226,6 +230,12 @@ class EmojiImpl {
     fun searchForEmoji(query: String): List<EmojiPickerItem> {
         val list = mutableListOf<EmojiPickerItem>()
 
+        val dismodMatches = DismodEmojiManager.search(query)
+        if (dismodMatches.isNotEmpty()) {
+            list.add(EmojiPickerItem.Section(Category.DismodEmojiCategory("Dismod Emojis", "✨")))
+            list.addAll(dismodMatches.map { EmojiPickerItem.DismodEmoji(it) })
+        }
+
         for (server in serversWithEmotes()) {
             val emotes = StoatAPI.emojiCache.values.filter { it.parent?.id == server.id }
             val matchingEmotes =
@@ -233,23 +243,6 @@ class EmojiImpl {
             if (matchingEmotes.isNotEmpty()) {
                 list.add(EmojiPickerItem.Section(Category.ServerEmoteCategory(server)))
                 list.addAll(matchingEmotes.map { EmojiPickerItem.ServerEmote(it) })
-            }
-        }
-
-        for (group in metadata) {
-            val matchingEmoji = group.emoji.filter {
-                it.shortcodes.any { code ->
-                    code.contains(
-                        query,
-                        ignoreCase = true
-                    )
-                }
-            }
-            if (matchingEmoji.isNotEmpty()) {
-                val category =
-                    UnicodeEmojiSection.entries.find { it.googleName == group.group } ?: continue
-                list.add(EmojiPickerItem.Section(Category.UnicodeEmojiCategory(category)))
-                list.addAll(matchingEmoji.flatMap { emoji -> emojiToPickerItems(emoji) })
             }
         }
 

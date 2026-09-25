@@ -3,7 +3,6 @@ package chat.stoat.composables.emoji
 import android.util.TypedValue
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,9 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -38,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -61,7 +59,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import chat.stoat.R
-import chat.stoat.activities.StoatTweenFloat
 import chat.stoat.callbacks.Action
 import chat.stoat.callbacks.ActionChannel
 import chat.stoat.composables.generic.IconPlaceholder
@@ -70,22 +67,24 @@ import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.internals.Category
 import chat.stoat.internals.EmojiImpl
 import chat.stoat.internals.EmojiPickerItem
-import chat.stoat.internals.FitzpatrickSkinTone
-import chat.stoat.internals.UnicodeEmojiSection
+import chat.stoat.internals.DismodEmojiManager
 import kotlinx.coroutines.launch
 
 @Composable
 fun EmojiPicker(
     onSearchFocus: (Boolean) -> Unit = {},
     bottomInset: Dp = 0.dp,
+    isReactionPicker: Boolean = false,
     onEmojiSelected: (String) -> Unit,
 ) {
     val view = LocalView.current
     val focusManager = LocalFocusManager.current
 
     val emojiImpl = remember { EmojiImpl() }
-    val pickerList = remember(emojiImpl) { emojiImpl.flatPickerList() }
+    val dismodEmojis by DismodEmojiManager.emojisFlow.collectAsState()
+    val pickerList = remember(emojiImpl, dismodEmojis) { emojiImpl.flatPickerList() }
     val servers = remember(emojiImpl) { emojiImpl.serversWithEmotes() }
+    val dismodPacks = remember(dismodEmojis) { DismodEmojiManager.getPacks() }
     val categorySpans = remember(pickerList) { emojiImpl.categorySpans(pickerList) }
 
     val gridState = rememberLazyGridState()
@@ -93,7 +92,7 @@ fun EmojiPicker(
 
     val scope = rememberCoroutineScope()
 
-    val spanCount = 9 // https://github.com/googlefonts/emoji-metadata/#readme
+    val spanCount = 7
 
     // The current category is the one that the user is currently looking at.
     val currentCategory = remember(gridState, categorySpans) {
@@ -109,51 +108,18 @@ fun EmojiPicker(
     }
 
     LaunchedEffect(currentCategory.value) {
-        // Scroll to the server icon of the current category.
         val offset = categorySpans.entries.indexOfFirst { it.key == currentCategory.value }
-        var px = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP,
-            37f + 4f,
-            view.resources.displayMetrics
-        ).toInt()
-
-        // If the user is looking at the unicode emoji, scroll to the end instead
-        // so that the category icons are all neatly aligned.
-        //
-        // Impl -> Not scrolling to "the end" but to the current category plus 50.
-        // (Which technically is an evil hack, but technically I could also
-        // poke an eye out with a spoon, so let's not worry about technicalities.)
-        if (currentCategory.value is Category.UnicodeEmojiCategory) px += 50
-
-        categoryRowScrollState.animateScrollTo(offset * px)
-    }
-
-    var currentSkinTone by remember { mutableStateOf(FitzpatrickSkinTone.None) }
-    var showSkinToneMenu by remember { mutableStateOf(false) }
-    val skinToneMenuAreaWeight by animateFloatAsState(
-        if (showSkinToneMenu) 1f else .15f,
-        animationSpec = StoatTweenFloat,
-        label = "skinToneMenuAreaWeight"
-    )
-    val skinToneMenuCloseHintIconOpacity by animateFloatAsState(
-        if (showSkinToneMenu) 1f else 0f,
-        animationSpec = StoatTweenFloat,
-        label = "skinToneMenuCloseHintIconOpacity"
-    )
-
-    val skinSample = remember(pickerList) {
-        pickerList
-            .filterIsInstance<EmojiPickerItem.UnicodeEmoji>()
-            .first { it.character == "\uD83E\uDEF0" }
+        if (offset >= 0) {
+            val px = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
+                41f,
+                view.resources.displayMetrics
+            ).toInt()
+            categoryRowScrollState.animateScrollTo(offset * px)
+        }
     }
 
     var searchQuery by remember { mutableStateOf("") }
-    val searchFieldOpacity by animateFloatAsState(
-        if (showSkinToneMenu) 0f else 1f,
-        animationSpec = StoatTweenFloat,
-        label = "searchFieldOpacity"
-    )
-
     val searchResults = remember { mutableStateListOf<EmojiPickerItem>() }
     LaunchedEffect(searchQuery) {
         searchResults.clear()
@@ -175,31 +141,26 @@ fun EmojiPicker(
     val onEmojiClick: (EmojiPickerItem) -> Unit = {
         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         when (it) {
-            is EmojiPickerItem.UnicodeEmoji -> onEmojiSelected(
-                emojiImpl.applyFitzpatrickSkinTone(
-                    it,
-                    currentSkinTone
-                )
-            )
-
+            is EmojiPickerItem.UnicodeEmoji -> onEmojiSelected(it.character)
             is EmojiPickerItem.ServerEmote -> onEmojiSelected(":${it.emote.id}:")
+            is EmojiPickerItem.DismodEmoji -> {
+                if (isReactionPicker) {
+                    onEmojiSelected(it.item.shortcode)
+                } else {
+                    onEmojiSelected(DismodEmojiManager.formatMarkdown(it.item) + " ")
+                }
+            }
             else -> {}
         }
     }
-    val clearQueryButtonOpacity = animateFloatAsState(
-        if (searchQuery.isNotEmpty()) 1f else 0f,
-        animationSpec = StoatTweenFloat,
-        label = "clearQueryButtonOpacity"
-    )
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = Modifier.fillMaxSize()
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(37.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             BasicTextField(
                 value = searchQuery,
@@ -208,11 +169,9 @@ fun EmojiPicker(
                 },
                 textStyle = LocalTextStyle.current.copy(color = LocalContentColor.current),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                readOnly = showSkinToneMenu,
                 singleLine = true,
                 modifier = Modifier
-                    .fillMaxWidth(.9f)
-                    .alpha(searchFieldOpacity)
+                    .fillMaxWidth()
                     .align(Alignment.CenterStart)
                     .onFocusChanged {
                         onSearchFocus(it.isFocused)
@@ -220,357 +179,248 @@ fun EmojiPicker(
             ) { innerTextField ->
                 Box(
                     modifier = Modifier
+                        .fillMaxWidth()
                         .clip(MaterialTheme.shapes.small)
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
+                    if (searchQuery.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.emoji_picker_search_placeholder),
+                            style = LocalTextStyle.current.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        )
+                    }
                     innerTextField()
 
-                    Icon(
-                        painter = painterResource(R.drawable.ic_close_24dp),
-                        contentDescription = stringResource(R.string.emoji_picker_clear_search),
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .padding(4.dp)
-                            .size(24.dp)
-                            .then(
-                                if (searchQuery.isNotEmpty()) {
-                                    Modifier.clickable {
-                                        searchQuery = ""
-                                        focusManager.clearFocus() // this prevents the text field Z-below from gaining focus
-                                    }
-                                } else {
-                                    Modifier
-                                }
-                            )
-                            .align(Alignment.CenterEnd)
-                            .alpha(clearQueryButtonOpacity.value)
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier
-                    .height(37.dp)
-                    .fillMaxWidth(skinToneMenuAreaWeight)
-                    .align(Alignment.CenterEnd),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Spacer(Modifier.weight(1f))
-
-                AnimatedVisibility(
-                    showSkinToneMenu
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FitzpatrickSkinTone.entries.forEach { skinTone ->
-                            Text(
-                                emojiImpl.applyFitzpatrickSkinTone(
-                                    skinSample,
-                                    skinTone
-                                ),
-                                modifier = Modifier
-                                    .padding(4.dp)
-                                    .requiredSize(24.dp)
-                                    .clip(CircleShape)
-                                    .clickable(
-                                        onClickLabel = when (skinTone) {
-                                            FitzpatrickSkinTone.None -> stringResource(
-                                                R.string.emoji_picker_skin_tone_none
-                                            )
-
-                                            FitzpatrickSkinTone.Light -> stringResource(
-                                                R.string.emoji_picker_skin_tone_fitzpatrick_1_2
-                                            )
-
-                                            FitzpatrickSkinTone.MediumLight -> stringResource(
-                                                R.string.emoji_picker_skin_tone_fitzpatrick_3
-                                            )
-
-                                            FitzpatrickSkinTone.Medium -> stringResource(
-                                                R.string.emoji_picker_skin_tone_fitzpatrick_4
-                                            )
-
-                                            FitzpatrickSkinTone.MediumDark -> stringResource(
-                                                R.string.emoji_picker_skin_tone_fitzpatrick_5
-                                            )
-
-                                            FitzpatrickSkinTone.Dark -> stringResource(
-                                                R.string.emoji_picker_skin_tone_fitzpatrick_6
-                                            )
-                                        }
-                                    ) {
-                                        currentSkinTone = skinTone
-                                        showSkinToneMenu = false
-                                        focusManager.clearFocus() // this prevents the text field Z-below from gaining focus
-                                    }
-                                    .aspectRatio(1f),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                }
-
-                Spacer(Modifier.width(4.dp))
-
-                Box(
-                    modifier = Modifier
-                        .padding(end = 8.dp)
-                        .requiredSize(24.dp)
-                        .clip(CircleShape)
-                        .clickable {
-                            showSkinToneMenu = !showSkinToneMenu
-                        }
-                        .aspectRatio(1f)
-                ) {
-                    Text(
-                        emojiImpl.applyFitzpatrickSkinTone(
-                            skinSample,
-                            currentSkinTone
-                        ),
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .requiredSize(24.dp)
-                            .clip(CircleShape)
-                            .aspectRatio(1f)
-                            .alpha(1f - skinToneMenuCloseHintIconOpacity),
-                        textAlign = TextAlign.Center
-                    )
-                    Icon(
-                        painter = painterResource(R.drawable.ic_keyboard_arrow_right_24dp),
-                        contentDescription = stringResource(
-                            R.string.emoji_picker_close_skin_tone_menu
-                        ),
-                        tint = LocalContentColor.current,
-                        modifier = Modifier
-                            .alpha(skinToneMenuCloseHintIconOpacity)
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(4.dp))
-
-        AnimatedVisibility(searchResults.isEmpty()) {
-            Row(
-                modifier = Modifier
-                    .horizontalScroll(categoryRowScrollState)
-                    .padding(vertical = 4.dp)
-                    .height(37.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                servers.forEach { server ->
-                    Column(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                scope.launch {
-                                    val index =
-                                        pickerList.indexOfFirst {
-                                            it is EmojiPickerItem.Section && it.category is Category.ServerEmoteCategory && it.category.server == server
-                                        }
-                                    gridState.scrollToItem(index)
-                                }
-                            }
-                            .then(
-                                if (currentCategory.value is Category.ServerEmoteCategory && (currentCategory.value as Category.ServerEmoteCategory).server == server) {
-                                    Modifier.background(
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                    )
-                                } else {
-                                    Modifier
-                                }
-                            )
-                            .aspectRatio(1f)
-                            .padding(4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        if (server.icon == null) {
-                            IconPlaceholder(
-                                name = server.name ?: stringResource(R.string.unknown),
-                                fontSize = 16.sp,
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .fillMaxSize()
-                            )
-                        } else {
-                            RemoteImage(
-                                url = "$STOAT_FILES/icons/${server.icon!!.id}",
-                                allowAnimation = false,
-                                description = server.name,
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .fillMaxSize()
-                            )
-                        }
-                    }
-                }
-                UnicodeEmojiSection.entries.forEach { category ->
-                    Column(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                scope.launch {
-                                    val index =
-                                        pickerList.indexOfFirst {
-                                            it is EmojiPickerItem.Section && it.category is Category.UnicodeEmojiCategory && it.category.definition == category
-                                        }
-                                    gridState.scrollToItem(index)
-                                }
-                            }
-                            .then(
-                                if (currentCategory.value is Category.UnicodeEmojiCategory && (currentCategory.value as Category.UnicodeEmojiCategory).definition == category) {
-                                    Modifier.background(
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                    )
-                                } else {
-                                    Modifier
-                                }
-                            )
-                            .aspectRatio(1f)
-                            .padding(4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
+                    if (searchQuery.isNotEmpty()) {
                         Icon(
-                            painter = when (category) {
-                                UnicodeEmojiSection.Smileys -> painterResource(
-                                    R.drawable.ic_mood_24dp
-                                )
-
-                                UnicodeEmojiSection.People -> painterResource(
-                                    R.drawable.ic_emoji_people_24dp
-                                )
-
-                                UnicodeEmojiSection.Animals -> painterResource(
-                                    R.drawable.ic_emoji_nature_24dp
-                                )
-
-                                UnicodeEmojiSection.Food -> painterResource(
-                                    R.drawable.ic_sports_bar_24dp
-                                )
-
-                                UnicodeEmojiSection.Travel -> painterResource(
-                                    R.drawable.ic_bus_railway_24dp
-                                )
-
-                                UnicodeEmojiSection.Activities -> painterResource(
-                                    R.drawable.ic_sports_and_outdoors_24dp
-                                )
-
-                                UnicodeEmojiSection.Objects -> painterResource(
-                                    R.drawable.ic_emoji_objects_24dp
-                                )
-
-                                UnicodeEmojiSection.Symbols -> painterResource(
-                                    R.drawable.ic_emoji_symbols_24dp
-                                )
-
-                                UnicodeEmojiSection.Flags -> painterResource(
-                                    R.drawable.ic_flag_24dp
-                                )
-                            },
-                            contentDescription = null,
-                            tint = if (currentCategory.value is Category.UnicodeEmojiCategory && (currentCategory.value as Category.UnicodeEmojiCategory).definition == category) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                LocalContentColor.current
-                            }
+                            painter = painterResource(R.drawable.ic_close_24dp),
+                            contentDescription = stringResource(R.string.emoji_picker_clear_search),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable {
+                                    searchQuery = ""
+                                    focusManager.clearFocus()
+                                }
+                                .padding(4.dp)
+                                .size(20.dp)
+                                .align(Alignment.CenterEnd)
                         )
                     }
                 }
             }
         }
 
-        LazyVerticalGrid(
-            state = gridState,
-            columns = GridCells.Fixed(spanCount),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            if (searchResults.isNotEmpty()) {
-                item(
-                    key = "searchResultsHeader",
-                    span = {
-                        GridItemSpan(spanCount)
+        if (dismodPacks.isNotEmpty() || servers.isNotEmpty()) {
+            AnimatedVisibility(searchResults.isEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .horizontalScroll(categoryRowScrollState)
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                        .height(37.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    dismodPacks.forEach { (packName, packIcon) ->
+                        val cat = Category.DismodEmojiCategory(packName, packIcon)
+                        Column(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    scope.launch {
+                                        val index = pickerList.indexOfFirst {
+                                            it is EmojiPickerItem.Section && it.category == cat
+                                        }
+                                        if (index >= 0) gridState.scrollToItem(index)
+                                    }
+                                }
+                                .then(
+                                    if (currentCategory.value == cat) {
+                                        Modifier.background(
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                        )
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                                .aspectRatio(1f)
+                                .padding(4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = packIcon,
+                                fontSize = 16.sp
+                            )
+                        }
                     }
+                    servers.forEach { server ->
+                        Column(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    scope.launch {
+                                        val index =
+                                            pickerList.indexOfFirst {
+                                                it is EmojiPickerItem.Section && it.category is Category.ServerEmoteCategory && it.category.server == server
+                                            }
+                                        if (index >= 0) gridState.scrollToItem(index)
+                                    }
+                                }
+                                .then(
+                                    if (currentCategory.value is Category.ServerEmoteCategory && (currentCategory.value as Category.ServerEmoteCategory).server == server) {
+                                        Modifier.background(
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                        )
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                                .aspectRatio(1f)
+                                .padding(4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            if (server.icon == null) {
+                                IconPlaceholder(
+                                    name = server.name ?: stringResource(R.string.unknown),
+                                    fontSize = 16.sp,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .fillMaxSize()
+                                )
+                            } else {
+                                RemoteImage(
+                                    url = "$STOAT_FILES/icons/${server.icon!!.id}",
+                                    allowAnimation = false,
+                                    description = server.name,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .fillMaxSize()
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (pickerList.isEmpty() && searchResults.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = stringResource(R.string.emoji_picker_search_results_header),
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp)
+                        text = "✨",
+                        fontSize = 40.sp
+                    )
+                    Text(
+                        text = "No custom emojis yet",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = "Add your own emojis from the catalog manager site to see them here!",
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-
-            // Search results do not get a key, this is intentional.
-            items(
-                searchResults.size,
-                span = {
-                    val item = searchResults[it]
-                    when (item) {
-                        is EmojiPickerItem.UnicodeEmoji -> GridItemSpan(1)
-                        is EmojiPickerItem.ServerEmote -> GridItemSpan(1)
-                        is EmojiPickerItem.Section -> GridItemSpan(spanCount)
+        } else {
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Fixed(spanCount),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (searchResults.isNotEmpty()) {
+                    item(
+                        key = "searchResultsHeader",
+                        span = {
+                            GridItemSpan(spanCount)
+                        }
+                    ) {
+                        Text(
+                            text = stringResource(R.string.emoji_picker_search_results_header),
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp)
+                        )
                     }
                 }
-            ) { index ->
-                PickerItem(
-                    item = searchResults[index],
-                    skinToneFactory = { emojiImpl.applyFitzpatrickSkinTone(it, currentSkinTone) },
-                    onClick = onEmojiClick,
-                    onServerEmoteInfo = onServerEmoteInfo,
-                    lesserHeaders = true
-                )
-            }
 
-            if (searchResults.isNotEmpty()) {
+                // Search results do not get a key, this is intentional.
+                items(
+                    searchResults.size,
+                    span = {
+                        val item = searchResults[it]
+                        when (item) {
+                            is EmojiPickerItem.DismodEmoji -> GridItemSpan(1)
+                            is EmojiPickerItem.ServerEmote -> GridItemSpan(1)
+                            is EmojiPickerItem.Section -> GridItemSpan(spanCount)
+                            else -> GridItemSpan(1)
+                        }
+                    }
+                ) { index ->
+                    PickerItem(
+                        item = searchResults[index],
+                        onClick = onEmojiClick,
+                        onServerEmoteInfo = onServerEmoteInfo,
+                        lesserHeaders = true
+                    )
+                }
+
+                if (searchResults.isNotEmpty()) {
+                    item(
+                        key = "searchResultsFooter",
+                        span = {
+                            GridItemSpan(spanCount)
+                        }
+                    ) {
+                        HorizontalDivider()
+                    }
+                }
+
+                items(
+                    pickerList.size,
+                    span = {
+                        val item = pickerList[it]
+                        when (item) {
+                            is EmojiPickerItem.DismodEmoji -> GridItemSpan(1)
+                            is EmojiPickerItem.ServerEmote -> GridItemSpan(1)
+                            is EmojiPickerItem.Section -> GridItemSpan(spanCount)
+                            else -> GridItemSpan(1)
+                        }
+                    }
+                ) { index ->
+                    PickerItem(
+                        item = pickerList[index],
+                        onClick = onEmojiClick,
+                        onServerEmoteInfo = onServerEmoteInfo
+                    )
+                }
+
                 item(
-                    key = "searchResultsFooter",
+                    key = "bottomInset",
                     span = {
                         GridItemSpan(spanCount)
                     }
                 ) {
-                    HorizontalDivider()
+                    Spacer(Modifier.height(bottomInset))
                 }
-            }
-
-            items(
-                pickerList.size,
-                span = {
-                    val item = pickerList[it]
-                    when (item) {
-                        is EmojiPickerItem.UnicodeEmoji -> GridItemSpan(1)
-                        is EmojiPickerItem.ServerEmote -> GridItemSpan(1)
-                        is EmojiPickerItem.Section -> GridItemSpan(spanCount)
-                    }
-                }
-            ) { index ->
-                PickerItem(
-                    item = pickerList[index],
-                    skinToneFactory = { emojiImpl.applyFitzpatrickSkinTone(it, currentSkinTone) },
-                    onClick = onEmojiClick,
-                    onServerEmoteInfo = onServerEmoteInfo
-                )
-            }
-
-            item(
-                key = "bottomInset",
-                span = {
-                    GridItemSpan(spanCount)
-                }
-            ) {
-                Spacer(Modifier.height(bottomInset))
             }
         }
     }
@@ -580,13 +430,12 @@ fun EmojiPicker(
 @Composable
 fun ColumnScope.PickerItem(
     item: EmojiPickerItem,
-    skinToneFactory: (EmojiPickerItem.UnicodeEmoji) -> String,
     onClick: (EmojiPickerItem) -> Unit,
     onServerEmoteInfo: (String) -> Unit,
     lesserHeaders: Boolean = false
 ) {
     when (item) {
-        is EmojiPickerItem.UnicodeEmoji -> {
+        is EmojiPickerItem.DismodEmoji -> {
             Column(
                 modifier = Modifier
                     .clip(CircleShape)
@@ -598,9 +447,11 @@ fun ColumnScope.PickerItem(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(
-                    text = skinToneFactory(item),
-                    style = LocalTextStyle.current.copy(fontSize = 20.sp)
+                RemoteImage(
+                    url = item.item.mediaUrl,
+                    description = item.item.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(32.dp)
                 )
             }
         }
@@ -632,6 +483,7 @@ fun ColumnScope.PickerItem(
         is EmojiPickerItem.Section -> {
             Text(
                 when (item.category) {
+                    is Category.DismodEmojiCategory -> "${item.category.emoji} ${item.category.name}"
                     is Category.UnicodeEmojiCategory -> stringResource(
                         item.category.definition.nameResource
                     )
@@ -652,6 +504,10 @@ fun ColumnScope.PickerItem(
                         }
                     )
             )
+        }
+
+        is EmojiPickerItem.UnicodeEmoji -> {
+            // Android emojis removed from picker; fallback no-op if ever present
         }
     }
 }

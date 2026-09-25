@@ -1291,8 +1291,9 @@ fun DMOrGroupItem(
 
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = partner?.let { User.resolveDefaultName(it) } ?: channel.name
-                    ?: stringResource(R.string.unknown),
+                    text = partner?.let { chat.stoat.internals.CustomNicknames.resolveName(it) }
+                        ?: ChannelUtils.resolveName(channel)
+                        ?: stringResource(R.string.unknown),
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
