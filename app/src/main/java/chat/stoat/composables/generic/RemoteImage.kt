@@ -13,12 +13,13 @@ import com.bumptech.glide.integration.compose.CrossFade
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
 
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.compositionLocalOf
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.load.resource.gif.GifOptions
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 
-val LocalAllowGifAnimation = staticCompositionLocalOf { true }
+val LocalAllowGifAnimation = compositionLocalOf { true }
 
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
@@ -61,6 +62,7 @@ fun RemoteImage(
             rb.diskCacheStrategy(DiskCacheStrategy.DATA)
                 .downsample(DownsampleStrategy.AT_MOST)
                 .format(DecodeFormat.PREFER_RGB_565)
+                .set(GifOptions.DISABLE_ANIMATION, !shouldAnimate)
             if (ow > 0 && oh > 0) {
                 rb.override(ow, oh)
             }

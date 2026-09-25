@@ -1117,65 +1117,76 @@ fun ChannelScreen(
                                     ) {
                                         when (item) {
                                             is ChannelScreenItem.RegularMessage -> {
-                                                RegularMessage(
-                                                    item.message,
-                                                    viewModel.channel,
-                                                    drawerIsOpen = drawerIsOpen,
-                                                    setDrawerGestureEnabled = {
-                                                        setDrawerGestureEnabled(it)
-                                                    },
-                                                    setDisableScroll = {
-                                                        disableScroll = it
-                                                    },
-                                                    showMessageBottomSheet = {
-                                                        messageContextSheetTarget = it
-                                                        messageContextSheetShown = true
-                                                    },
-                                                    showReactBottomSheet = {
-                                                        item.message.id?.let {
-                                                            reactSheetTarget = it
-                                                            reactSheetShown = true
-                                                        }
-                                                    },
-                                                    putTextAtCursorPosition = viewModel::putAtCursorPosition,
-                                                    replyToMessage = viewModel::addReplyTo,
-                                                    jumpToMessage = viewModel::requestJump,
-                                                    scope = scope,
-                                                    mdAst = item.mdAst
-                                                )
-                                            }
-
-                                            is ChannelScreenItem.ProspectiveMessage -> {
-                                                Box(Modifier.alpha(0.5f)) {
-                                                    Message(
-                                                        message = item.message,
-                                                        onMessageContextMenu = {
-                                                            // TODO Context menu that allows you to cancel send
+                                                CompositionLocalProvider(
+                                                    LocalAllowGifAnimation provides !lazyListState.isScrollInProgress
+                                                ) {
+                                                    RegularMessage(
+                                                        item.message,
+                                                        viewModel.channel,
+                                                        drawerIsOpen = drawerIsOpen,
+                                                        setDrawerGestureEnabled = {
+                                                            setDrawerGestureEnabled(it)
                                                         },
-                                                        onAvatarClick = {
-                                                            StoatAPI.selfId?.let { userId ->
-                                                                scope.launch {
-                                                                    ActionChannel.send(Action.OpenUserSheet(userId, viewModel.channel?.server))
-                                                                }
+                                                        setDisableScroll = {
+                                                            disableScroll = it
+                                                        },
+                                                        showMessageBottomSheet = {
+                                                            messageContextSheetTarget = it
+                                                            messageContextSheetShown = true
+                                                        },
+                                                        showReactBottomSheet = {
+                                                            item.message.id?.let {
+                                                                reactSheetTarget = it
+                                                                reactSheetShown = true
                                                             }
                                                         },
-                                                        onNameClick = {
-                                                            StoatAPI.selfId?.let { userId ->
-                                                                scope.launch {
-                                                                    ActionChannel.send(Action.OpenUserSheet(userId, viewModel.channel?.server))
-                                                                }
-                                                            }
-                                                        },
-                                                        canReply = false,
-                                                        onReply = {},
-                                                        onAddReaction = {},
-                                                        mdAst = item.mdAst,
+                                                        putTextAtCursorPosition = viewModel::putAtCursorPosition,
+                                                        replyToMessage = viewModel::addReplyTo,
+                                                        jumpToMessage = viewModel::requestJump,
+                                                        scope = scope,
+                                                        mdAst = item.mdAst
                                                     )
                                                 }
                                             }
 
+                                            is ChannelScreenItem.ProspectiveMessage -> {
+                                                CompositionLocalProvider(
+                                                    LocalAllowGifAnimation provides !lazyListState.isScrollInProgress
+                                                ) {
+                                                    Box(Modifier.alpha(0.5f)) {
+                                                        Message(
+                                                            message = item.message,
+                                                            onMessageContextMenu = {
+                                                                // TODO Context menu that allows you to cancel send
+                                                            },
+                                                            onAvatarClick = {
+                                                                StoatAPI.selfId?.let { userId ->
+                                                                    scope.launch {
+                                                                        ActionChannel.send(Action.OpenUserSheet(userId, viewModel.channel?.server))
+                                                                    }
+                                                                }
+                                                            },
+                                                            onNameClick = {
+                                                                StoatAPI.selfId?.let { userId ->
+                                                                    scope.launch {
+                                                                        ActionChannel.send(Action.OpenUserSheet(userId, viewModel.channel?.server))
+                                                                    }
+                                                                }
+                                                            },
+                                                            canReply = false,
+                                                            onReply = {},
+                                                            onAddReaction = {},
+                                                            mdAst = item.mdAst,
+                                                        )
+                                                    }
+                                                }
+                                            }
+
                                             is ChannelScreenItem.FailedMessage -> {
-                                                CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.error) {
+                                                CompositionLocalProvider(
+                                                    LocalContentColor provides MaterialTheme.colorScheme.error,
+                                                    LocalAllowGifAnimation provides !lazyListState.isScrollInProgress
+                                                ) {
                                                     Column {
                                                         Message(
                                                             message = item.message,
