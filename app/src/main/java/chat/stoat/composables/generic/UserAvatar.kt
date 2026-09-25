@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -155,7 +156,17 @@ fun UserAvatar(
 
     Box(
         modifier = modifier
-            .size(size),
+            .size(size)
+            .then(
+                if (onClick != null || onLongClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = { onClick?.invoke() },
+                        onLongClick = { onLongClick?.invoke() }
+                    )
+                } else {
+                    Modifier
+                }
+            ),
         contentAlignment = Alignment.BottomEnd
     ) {
         if (avatar != null) {
@@ -176,17 +187,6 @@ fun UserAvatar(
                             Modifier
                         }
                     )
-                    .then(
-                        if (onLongClick != null || onClick != null) {
-                            Modifier
-                                .combinedClickable(
-                                    onClick = { onClick?.invoke() },
-                                    onLongClick = { onLongClick?.invoke() }
-                                )
-                        } else {
-                            Modifier
-                        }
-                    )
             )
         } else {
             RemoteImage(
@@ -201,17 +201,6 @@ fun UserAvatar(
                     .then(
                         if (presence != null) {
                             Modifier.bottomEndCircleCutout(presenceSize)
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .then(
-                        if (onLongClick != null || onClick != null) {
-                            Modifier
-                                .combinedClickable(
-                                    onClick = { onClick?.invoke() },
-                                    onLongClick = { onLongClick?.invoke() }
-                                )
                         } else {
                             Modifier
                         }
