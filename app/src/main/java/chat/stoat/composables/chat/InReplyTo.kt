@@ -48,16 +48,16 @@ fun InReplyTo(
     val message = StoatAPI.messageCache[messageId]
     val author = StoatAPI.userCache[message?.author ?: ""]
 
+    val serverId = remember(channelId) { StoatAPI.channelCache[channelId]?.server }
+
     val username = message?.let { authorName(it) }
-        ?: author?.let { User.resolveDefaultName(it) }
+        ?: author?.let { chat.stoat.internals.CustomNicknames.resolveName(it, serverId) }
         ?: stringResource(id = R.string.unknown)
 
     val contentColor = LocalContentColor.current
     val usernameColor =
         message?.let { authorColour(it) } ?: Brush.solidColor(contentColor)
     val roleIcon = message?.let { authorRoleIcon(it) }
-
-    val serverId = remember(channelId) { StoatAPI.channelCache[channelId]?.server }
 
     LaunchedEffect(messageId) {
         if (messageId !in StoatAPI.messageCache) {

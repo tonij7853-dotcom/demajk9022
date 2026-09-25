@@ -33,57 +33,138 @@
       </section>
 
       <div id="admin-app" hidden>
-        <section class="intro">
-          <p class="eyebrow">ADMIN CATALOG</p>
-          <h1>Make your GIF picker yours.</h1>
-          <p class="muted-copy">Import any public link or upload a file. Assign a named group and emoji; the GIF is converted, securely stored in your private cloud catalog, and instantly available in your Dismod app.</p>
-        </section>
-        <section class="workspace">
-          <form id="gif-form" class="panel import-panel">
-            <p class="eyebrow">NEW GIF</p><h2>Import from a link or file</h2>
-            <label for="gif-url">GIF or image link</label>
-            <div class="code-input-row">
-              <input id="gif-url" type="url" inputmode="url" placeholder="Paste link (Discord, boorus, Tenor, direct URLs...)" />
-              <label for="gif-file" class="button quiet file-btn" title="Choose file from your device">Upload file</label>
-              <input id="gif-file" type="file" accept="image/gif,image/webp,image/png,image/jpeg" hidden />
-            </div>
-            <p class="hint">Any public image or GIF link is supported. Or click "Upload file" to select a file directly from your device.</p>
-            <label for="gif-title">Name</label>
-            <input id="gif-title" type="text" maxlength="80" placeholder="Happy dance" required />
+        <nav class="studio-tabs" aria-label="Studio navigation">
+          <button id="tab-btn-gifs" class="studio-tab-btn active" type="button">🎬 GIFs Studio</button>
+          <button id="tab-btn-emojis" class="studio-tab-btn" type="button">✨ Emojis Studio</button>
+        </nav>
 
-            <div class="group-select-container">
-              <label for="gif-category-select">GIF group <span class="muted">· choose from existing</span></label>
-              <select id="gif-category-select" class="group-select">
-                <option value="">-- Choose existing group --</option>
-              </select>
-              <div id="group-chips" class="group-chips"></div>
-            </div>
-
-            <div class="field-grid">
-              <div><label for="gif-category">Group name</label><input id="gif-category" type="text" maxlength="32" value="Reactions" required /></div>
-              <div><label for="gif-emoji">Group emoji</label><input id="gif-emoji" type="text" maxlength="8" value="🙂" /></div>
-            </div>
-            <label for="gif-tags">Search tags <span class="muted">· comma separated</span></label><input id="gif-tags" type="text" maxlength="300" placeholder="happy, celebration, dance" />
-            <label class="permission-check"><input id="rights-confirmed" type="checkbox" /><span>I have permission to share this GIF with Dismod users.</span></label>
-            <div class="form-actions">
-              <button id="preview-button" class="button secondary" type="submit">Check &amp; preview</button>
-              <button id="publish-button" class="button primary" type="button" disabled>Add to Dismod App →</button>
-            </div>
-            <p id="form-status" class="status" role="status" aria-live="polite"></p>
-          </form>
-          <section class="panel preview-panel" aria-label="GIF preview">
-            <div class="panel-heading"><div><p class="eyebrow">PREVIEW</p><h2 id="preview-heading">Your GIF will appear here</h2></div><span class="badge">GIF</span></div>
-            <div class="preview-stage"><div id="preview-empty" class="preview-empty"><span class="preview-glyph">GIF</span><p>Check a link to see it animate</p><span>The file is normalized and checked before it enters the catalog.</span></div><img id="preview-image" alt="Imported GIF preview" hidden /></div>
-            <div id="preview-details" class="preview-details" hidden></div>
-            <p class="hint">The source URL is only used while importing. GIFs and catalog details are stored privately in Netlify cloud storage.</p>
+        <div id="view-gifs">
+          <section class="intro">
+            <p class="eyebrow">ADMIN CATALOG</p>
+            <h1>Make your GIF picker yours.</h1>
+            <p class="muted-copy">Import any public link or upload a file. Assign a named group and emoji; the GIF is converted, securely stored in your private cloud catalog, and instantly available in your Dismod app.</p>
           </section>
-        </section>
-        <section class="library-section">
-          <div class="library-heading"><div><p class="eyebrow">SHARED WITH APP USERS</p><h2>Your Dismod GIFs <span id="gif-count" class="count">0</span></h2></div><button id="refresh-button" class="button quiet">Refresh</button></div>
-          <div id="pending-update" class="pending-update" hidden></div>
-          <div id="library-grid" class="library-grid"></div>
-          <p id="library-empty" class="library-empty" hidden>No GIFs yet. Import one above.</p>
-        </section>
+          <section class="workspace">
+            <form id="gif-form" class="panel import-panel">
+              <p class="eyebrow">NEW GIF</p><h2>Import from a link or file</h2>
+              <label for="gif-url">GIF or image link</label>
+              <div class="code-input-row">
+                <input id="gif-url" type="url" inputmode="url" placeholder="Paste link (Discord, boorus, Tenor, direct URLs...)" />
+                <label for="gif-file" class="button quiet file-btn" title="Choose file from your device">Upload file</label>
+                <input id="gif-file" type="file" accept="image/gif,image/webp,image/png,image/jpeg" hidden />
+              </div>
+              <p class="hint">Any public image or GIF link is supported. Or click "Upload file" to select a file directly from your device.</p>
+              <label for="gif-title">Name</label>
+              <input id="gif-title" type="text" maxlength="80" placeholder="Happy dance" required />
+
+              <div class="group-select-container">
+                <label for="gif-category-select">GIF group <span class="muted">· choose from existing</span></label>
+                <select id="gif-category-select" class="group-select">
+                  <option value="">-- Choose existing group --</option>
+                </select>
+                <div id="group-chips" class="group-chips"></div>
+              </div>
+
+              <div class="field-grid">
+                <div><label for="gif-category">Group name</label><input id="gif-category" type="text" maxlength="32" value="Reactions" required /></div>
+                <div><label for="gif-emoji">Group emoji</label><input id="gif-emoji" type="text" maxlength="8" value="🙂" /></div>
+              </div>
+              <label for="gif-tags">Search tags <span class="muted">· comma separated</span></label><input id="gif-tags" type="text" maxlength="300" placeholder="happy, celebration, dance" />
+              <label class="permission-check"><input id="rights-confirmed" type="checkbox" /><span>I have permission to share this GIF with Dismod users.</span></label>
+              <div class="form-actions">
+                <button id="preview-button" class="button secondary" type="submit">Check &amp; preview</button>
+                <button id="publish-button" class="button primary" type="button" disabled>Add to Dismod App →</button>
+              </div>
+              <p id="form-status" class="status" role="status" aria-live="polite"></p>
+            </form>
+            <section class="panel preview-panel" aria-label="GIF preview">
+              <div class="panel-heading"><div><p class="eyebrow">PREVIEW</p><h2 id="preview-heading">Your GIF will appear here</h2></div><span class="badge">GIF</span></div>
+              <div class="preview-stage"><div id="preview-empty" class="preview-empty"><span class="preview-glyph">GIF</span><p>Check a link to see it animate</p><span>The file is normalized and checked before it enters the catalog.</span></div><img id="preview-image" alt="Imported GIF preview" hidden /></div>
+              <div id="preview-details" class="preview-details" hidden></div>
+              <p class="hint">The source URL is only used while importing. GIFs and catalog details are stored privately in Netlify cloud storage.</p>
+            </section>
+          </section>
+          <section class="library-section">
+            <div class="library-heading"><div><p class="eyebrow">SHARED WITH APP USERS</p><h2>Your Dismod GIFs <span id="gif-count" class="count">0</span></h2></div><button id="refresh-button" class="button quiet">Refresh</button></div>
+            <div id="pending-update" class="pending-update" hidden></div>
+            <div id="library-grid" class="library-grid"></div>
+            <p id="library-empty" class="library-empty" hidden>No GIFs yet. Import one above.</p>
+          </section>
+        </div>
+
+        <div id="view-emojis" hidden>
+          <section class="intro">
+            <p class="eyebrow">DISMOD EMOJI STUDIO</p>
+            <h1>Discord Nitro-style Animated Emojis</h1>
+            <p class="muted-copy">Import public links from emoji.gg, Discord, Tenor, or upload GIF/PNG emoji files. Emojis render small inside chat messages and are available directly in your Dismod app built-in picker.</p>
+          </section>
+          <section class="workspace">
+            <form id="emoji-form" class="panel import-panel">
+              <p class="eyebrow">NEW EMOJI</p><h2>Import from a link or file</h2>
+              <label for="emoji-url">Emoji link</label>
+              <div class="code-input-row">
+                <input id="emoji-url" type="url" inputmode="url" placeholder="Paste link (e.g. https://cdn3.emoji.gg/emojis/990783-ordik.gif)" />
+                <label for="emoji-file" class="button quiet file-btn" title="Choose emoji file from your device">Upload file</label>
+                <input id="emoji-file" type="file" accept="image/gif,image/webp,image/png,image/jpeg" hidden />
+              </div>
+              <p class="hint">emoji.gg direct links, animated GIFs, or PNG/WebP files are supported.</p>
+              
+              <div class="field-grid">
+                <div><label for="emoji-shortcode">Shortcode <span class="muted">· :name:</span></label><input id="emoji-shortcode" type="text" maxlength="32" placeholder="ordik" required /></div>
+                <div><label for="emoji-title">Display Name</label><input id="emoji-title" type="text" maxlength="60" placeholder="Ordik Dance" required /></div>
+              </div>
+
+              <div class="group-select-container">
+                <label for="emoji-category-select">Emoji pack <span class="muted">· choose from existing</span></label>
+                <select id="emoji-category-select" class="group-select">
+                  <option value="">-- Choose existing pack --</option>
+                </select>
+                <div id="emoji-group-chips" class="group-chips"></div>
+              </div>
+
+              <div class="field-grid">
+                <div><label for="emoji-category">Pack name</label><input id="emoji-category" type="text" maxlength="32" value="Reactions" required /></div>
+                <div><label for="emoji-group-emoji">Pack icon</label><input id="emoji-group-emoji" type="text" maxlength="8" value="✨" /></div>
+              </div>
+              <label for="emoji-tags">Search tags <span class="muted">· comma separated</span></label><input id="emoji-tags" type="text" maxlength="300" placeholder="frog, dance, animated, ordik" />
+              <label class="permission-check"><input id="emoji-rights-confirmed" type="checkbox" /><span>I have permission to share this emoji with Dismod users.</span></label>
+              <div class="form-actions">
+                <button id="emoji-preview-button" class="button secondary" type="submit">Check &amp; preview</button>
+                <button id="emoji-publish-button" class="button primary" type="button" disabled>Add to Dismod App →</button>
+              </div>
+              <p id="emoji-form-status" class="status" role="status" aria-live="polite"></p>
+            </form>
+            <section class="panel preview-panel" aria-label="Emoji preview">
+              <div class="panel-heading"><div><p class="eyebrow">PREVIEW</p><h2 id="emoji-preview-heading">Your emoji will appear here</h2></div><span class="badge">EMOJI</span></div>
+              <div class="preview-stage">
+                <div id="emoji-preview-empty" class="preview-empty">
+                  <span class="preview-glyph">✨</span>
+                  <p>Check an emoji link to preview</p>
+                  <span>Previews how it will look small inside chat messages like Discord Nitro.</span>
+                </div>
+                <div id="emoji-preview-box" class="emoji-preview-box" hidden>
+                  <div class="chat-sim-bubble">
+                    <span class="chat-sim-user">Dismod User</span>
+                    <div class="chat-sim-text">
+                      Hey check this out <img id="emoji-preview-inline" class="chat-inline-emoji" alt="inline emoji preview" /> looks awesome!
+                    </div>
+                  </div>
+                  <div class="jumbo-sim-row">
+                    <span class="sim-label">Standalone (48px):</span>
+                    <img id="emoji-preview-jumbo" class="chat-jumbo-emoji" alt="jumbo emoji preview" />
+                  </div>
+                </div>
+              </div>
+              <div id="emoji-preview-details" class="preview-details" hidden></div>
+              <p class="hint">Emojis are stored in your Dismod cloud catalog and available directly in the Android app emoji picker.</p>
+            </section>
+          </section>
+          <section class="library-section">
+            <div class="library-heading"><div><p class="eyebrow">SHARED WITH APP USERS</p><h2>Your Dismod Emojis <span id="emoji-count" class="count">0</span></h2></div><button id="emoji-refresh-button" class="button quiet">Refresh</button></div>
+            <div id="emoji-library-grid" class="library-grid emoji-grid"></div>
+            <p id="emoji-library-empty" class="library-empty" hidden>No custom emojis yet. Import one above.</p>
+          </section>
+        </div>
       </div>
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
     </main>

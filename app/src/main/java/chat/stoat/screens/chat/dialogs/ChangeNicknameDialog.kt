@@ -59,7 +59,7 @@ fun ChangeNicknameDialog(
                     text = if (serverId != null) {
                         "Enter a nickname for this user in this server. Leave empty to reset to default."
                     } else {
-                        "Enter a custom nickname for this user in your DMs. Leave empty to reset."
+                        "Enter a custom nickname for this user in private chats and groups. Leave empty to reset."
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
