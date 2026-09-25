@@ -1,0 +1,7 @@
+{
+  "versionCode": 1008000,
+  "versionName": "1.8.0",
+  "apkUrl": "https://github.com/tonij7853-dotcom/demajk9022/releases/latest/download/dismod.apk",
+  "changelog": "• Profile preview when tapping avatars in chat\n• Swipe right-to-left to reply to messages\n• Real-time message & friend request notifications\n• Faster app startup — settings load instantly\n• Smoother chat scrolling with no lag\n• Bug fixes and performance improvements",
+  "forceUpdate": false
+}

@@ -62,12 +62,12 @@ android {
     val propVersionCode = (project.findProperty("versionCode")?.toString()
         ?: System.getenv("DISMOD_VERSION_CODE")
         ?: buildproperty("versionCode"))?.toIntOrNull()
-        ?: Integer.parseInt("001_007_010".replace("_", ""), 10)
+        ?: Integer.parseInt("001_008_000".replace("_", ""), 10)
 
     val propVersionName = (project.findProperty("versionName")?.toString()
         ?: System.getenv("DISMOD_VERSION_NAME")
         ?: buildproperty("versionName"))
-        ?: "1.7.10"
+        ?: "1.8.0"
 
     defaultConfig {
         applicationId = "com.dismod.app"
