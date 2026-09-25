@@ -136,6 +136,7 @@ import chat.stoat.voice.VoiceCallManager
 import io.ktor.client.request.get
 import io.sentry.android.core.SentryAndroid
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import org.koin.androidx.viewmodel.ext.android.viewModel
@@ -228,16 +229,14 @@ class MainActivityViewModel(
                 StoatAPI.selfId = selfId
             }
 
-            // FAST STARTUP: Set session headers immediately and navigate to main without delay
+            // Set session headers immediately
             StoatAPI.setSessionHeader(token)
             StoatAPI.setSessionId(id)
+            // Reset the ready gate so the splash screen blocks properly
+            StoatAPI.resetSocketReady()
 
-            val destination = if (Experiments.usePolar.isEnabled) "main" else "chat"
-            Log.d("MainActivity", "Session token present, navigating immediately to $destination")
-            startWithDestination(destination)
-
-            // Connect socket and sync data in the background
-            viewModelScope.launch(Dispatchers.IO) {
+            // Start socket + data fetch in background
+            val loginJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
                     StoatAPI.loginAs(token)
                 } catch (e: Exception) {
@@ -248,11 +247,29 @@ class MainActivityViewModel(
                     }
                 }
             }
+
+            val destination = if (Experiments.usePolar.isEnabled) "main" else "chat"
+            Log.d("MainActivity", "Waiting for socket Ready before navigating to $destination")
+
+            // Wait until socket is ready (or timeout after 8s so we don't block forever)
+            val readyTimeoutMs = 8_000L
+            val start = System.currentTimeMillis()
+            while (!StoatAPI.isSocketReady.value) {
+                if (System.currentTimeMillis() - start > readyTimeoutMs) {
+                    Log.w("MainActivity", "Socket ready timeout — proceeding anyway")
+                    break
+                }
+                delay(50)
+            }
+
+            Log.d("MainActivity", "Navigating to $destination")
+            startWithDestination(destination)
         }
     }
 
     fun logOut() {
         viewModelScope.launch {
+            StoatAPI.resetSocketReady()
             kvStorage.remove("sessionToken")
             kvStorage.remove("sessionId")
             kvStorage.remove("selfId")

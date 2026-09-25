@@ -286,6 +286,8 @@ object RealtimeSocket {
                 channelRegistrator.register()
 
                 StoatAPI.closeHydration()
+                StoatAPI.onSocketReady()
+                Log.d("RealtimeSocket", "Socket ready — app data fully loaded.")
             }
 
             "Message" -> {

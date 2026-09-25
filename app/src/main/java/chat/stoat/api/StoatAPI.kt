@@ -46,6 +46,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
@@ -179,6 +181,20 @@ object StoatAPI {
     private var pingCoroutine: Job? = null
 
     private var openForLocalHydration = true
+
+    private val _isSocketReady = MutableStateFlow(false)
+    /** Emits true once the WebSocket Ready frame has been fully processed. */
+    val isSocketReady = _isSocketReady.asStateFlow()
+
+    /** Called by RealtimeSocket when the Ready frame is processed. */
+    fun onSocketReady() {
+        _isSocketReady.value = true
+    }
+
+    /** Reset on logout / new login so the splash gate works again. */
+    fun resetSocketReady() {
+        _isSocketReady.value = false
+    }
 
     fun setSessionHeader(token: String) {
         sessionToken = token
