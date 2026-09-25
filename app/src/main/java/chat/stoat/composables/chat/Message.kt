@@ -299,7 +299,9 @@ fun Message(
 
     Column(modifier.animateContentSize()) {
         if (message.tail == false) {
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+        } else {
+            Spacer(modifier = Modifier.height(2.dp))
         }
 
         if (authorIsBlocked) {
@@ -383,12 +385,12 @@ fun Message(
                                 onMessageContextMenu()
                             }
                         )
-                        .padding(horizontal = 10.dp)
+                        .padding(horizontal = 16.dp, vertical = 2.dp)
                         .fillMaxWidth()
                 ) {
                     if (message.tail == false) {
                         Column {
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(2.dp))
                             UserAvatar(
                                 username = User.resolveDefaultName(author),
                                 userId = author.id ?: message.id ?: ULID.makeSpecial(0),
@@ -401,7 +403,7 @@ fun Message(
                         UserAvatarWidthPlaceholder()
                     }
 
-                    Column(modifier = Modifier.padding(start = 10.dp)) {
+                    Column(modifier = Modifier.padding(start = 14.dp)) {
                         if (message.tail == false) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
@@ -424,7 +426,8 @@ fun Message(
                                         }
                                     },
                                     style = LocalTextStyle.current.copy(
-                                        fontWeight = FontWeight.Bold,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 15.sp,
                                         brush = authorColour(message)
                                     ),
                                     maxLines = 1,
@@ -467,7 +470,7 @@ fun Message(
                                     }
                                 )
 
-                                Spacer(modifier = Modifier.width(5.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
 
                                 Text(
                                     text = messageTimestampText(
@@ -475,12 +478,12 @@ fun Message(
                                         timestamp = formatLongAsTime(ULID.asTimestamp(message.id!!))
                                     ),
                                     fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
 
-                                Spacer(modifier = Modifier.width(2.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
 
                                 if (message.edited != null) {
                                     Icon(
@@ -489,7 +492,7 @@ fun Message(
                                         tint = MaterialTheme.colorScheme.onBackground.copy(
                                             alpha = 0.5f
                                         ),
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(14.dp)
                                     )
                                 }
                             }
@@ -506,7 +509,7 @@ fun Message(
                                     GigamojiState.Multiple -> 2f
                                     GigamojiState.None -> 1f
                                 }
-                                Spacer(modifier = Modifier.height(2.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
                                 if (mdAst != null) {
                                     ChatMarkdown(
                                         mdAst,
@@ -525,7 +528,7 @@ fun Message(
 
                         message.attachments?.let {
                             it.forEach { attachment ->
-                                Spacer(modifier = Modifier.height(2.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
                                 MessageAttachment(attachment) {
                                     when (attachment.metadata?.type) {
                                         "Image" -> {

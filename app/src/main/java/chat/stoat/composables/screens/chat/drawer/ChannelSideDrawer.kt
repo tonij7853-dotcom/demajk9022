@@ -33,11 +33,13 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
+import chat.stoat.screens.chat.dialogs.CreateChannelDialog
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -219,7 +221,32 @@ fun ChannelSideDrawer(
 
     val scope = rememberCoroutineScope()
 
-    Row(modifier.fillMaxSize()) {
+    var showCreateChannelDialog by remember { mutableStateOf(false) }
+    var createChannelInitialType by remember { mutableStateOf("Text") }
+
+    if (showCreateChannelDialog && currentServer != null) {
+        CreateChannelDialog(
+            serverId = currentServer,
+            initialType = createChannelInitialType,
+            onDismissRequest = { showCreateChannelDialog = false },
+            onChannelCreated = { newChannel ->
+                showCreateChannelDialog = false
+                newChannel.id?.let { chId ->
+                    onDestinationChanged(ChatRouterDestination.Channel(chId))
+                    scope.launch {
+                        drawerState?.close()
+                    }
+                }
+            }
+        )
+    }
+
+    Row(
+        modifier
+            .fillMaxHeight()
+            .widthIn(max = 310.dp)
+            .fillMaxWidth(0.84f)
+    ) {
         LazyColumn(
             Modifier.width(64.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -602,6 +629,16 @@ fun ChannelSideDrawer(
 
                         if (currentServer != null) {
                             IconButton(onClick = {
+                                createChannelInitialType = "Text"
+                                showCreateChannelDialog = true
+                            }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_add_24dp),
+                                    contentDescription = "Create Channel",
+                                    tint = LocalContentColor.current
+                                )
+                            }
+                            IconButton(onClick = {
                                 server?.id?.let { srvId -> onShowServerContextSheet(srvId) }
                             }) {
                                 Icon(
@@ -633,6 +670,10 @@ fun ChannelSideDrawer(
                     drawerState,
                     channelListState,
                     onOpenChannelContextSheet = { channelContextSheetTarget = it },
+                    onAddChannel = { type ->
+                        createChannelInitialType = type
+                        showCreateChannelDialog = true
+                    },
                     serverId = currentServer
                 )
             }
@@ -803,6 +844,7 @@ fun ColumnScope.ServerChannelListRenderer(
     drawerState: DrawerState?,
     channelListState: LazyListState,
     onOpenChannelContextSheet: (String) -> Unit,
+    onAddChannel: (String) -> Unit = {},
     serverId: String
 ) {
     val scope = rememberCoroutineScope()
@@ -873,7 +915,13 @@ fun ColumnScope.ServerChannelListRenderer(
                 }
 
                 is CategorisedChannelList.Category -> {
-                    CategoryItem(category = channelOrCat.category)
+                    CategoryItem(
+                        category = channelOrCat.category,
+                        onAddChannel = {
+                            val isVoice = channelOrCat.category.title?.contains("voice", ignoreCase = true) == true
+                            onAddChannel(if (isVoice) "Voice" else "Text")
+                        }
+                    )
                 }
 
                 else -> {}
@@ -1116,19 +1164,36 @@ private fun VoiceChannelParticipantRow(
 
 @Composable
 fun CategoryItem(
-    category: Category
+    category: Category,
+    onAddChannel: () -> Unit = {}
 ) {
-    Text(
-        text = (category.title ?: stringResource(R.string.unknown)).uppercase(),
-        style = MaterialTheme.typography.labelSmall.copy(
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 1.sp
-        ),
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-        modifier = Modifier.padding(
-            start = 16.dp, end = 16.dp, top = 20.dp, bottom = 6.dp
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 4.dp)
+    ) {
+        Text(
+            text = (category.title ?: stringResource(R.string.unknown)).uppercase(),
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.sp
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier.weight(1f)
         )
-    )
+        IconButton(
+            onClick = onAddChannel,
+            modifier = Modifier.size(24.dp)
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_add_24dp),
+                contentDescription = "Create Channel",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

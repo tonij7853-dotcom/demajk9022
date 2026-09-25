@@ -157,6 +157,7 @@ import chat.stoat.composables.generic.UserAvatar
 import chat.stoat.composables.generic.UserAvatarWidthPlaceholder
 import chat.stoat.composables.generic.presenceFromStatus
 import chat.stoat.composables.media.MediaPickerGateway
+import chat.stoat.composables.media.TelegramTopAudioPlayerBar
 import chat.stoat.composables.screens.chat.AttachmentManager
 import chat.stoat.composables.screens.chat.ChannelIcon
 import chat.stoat.composables.screens.chat.ReplyManager
@@ -933,6 +934,7 @@ fun ChannelScreen(
                         }
                     }
                 )
+                TelegramTopAudioPlayerBar()
             }
         }
     ) { pv ->
