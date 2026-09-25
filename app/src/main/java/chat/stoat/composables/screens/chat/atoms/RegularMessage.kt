@@ -64,6 +64,7 @@ fun RegularMessage(
     putTextAtCursorPosition: (String) -> Unit,
     replyToMessage: suspend (String) -> Unit,
     jumpToMessage: (String) -> Unit = {},
+    onOpenUserProfile: (String, String?) -> Unit,
     scope: CoroutineScope = rememberCoroutineScope(),
     mdAst: State? = null
 ) {
@@ -229,9 +230,7 @@ fun RegularMessage(
                         }
                     } else {
                         message.author?.let { author ->
-                            scope.launch {
-                                ActionChannel.send(Action.OpenUserSheet(author, channel?.server))
-                            }
+                            onOpenUserProfile(author, channel?.server)
                         }
                     }
                 },
@@ -242,9 +241,7 @@ fun RegularMessage(
                         }
                     } else {
                         message.author?.let { author ->
-                            scope.launch {
-                                ActionChannel.send(Action.OpenUserSheet(author, channel?.server))
-                            }
+                            onOpenUserProfile(author, channel?.server)
                         }
                     }
                 },
