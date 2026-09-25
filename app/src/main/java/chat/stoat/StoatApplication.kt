@@ -31,6 +31,9 @@ class StoatApplication : Application(), SingletonImageLoader.Factory {
             LiveKit.loggingLevel = LoggingLevel.DEBUG
         }
 
+        instance = this
+        chat.stoat.internals.CustomNicknames.init(this)
+
         startKoin {
             androidContext(this@StoatApplication)
             androidLogger()

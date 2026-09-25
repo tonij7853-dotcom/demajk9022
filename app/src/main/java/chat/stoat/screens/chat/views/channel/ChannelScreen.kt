@@ -749,7 +749,16 @@ fun ChannelScreen(
                 }
                 TopAppBar(
                     modifier = Modifier.clickable {
-                        channelInfoSheetShown = true
+                        val currentChannel = viewModel.channel
+                        if (currentChannel != null && currentChannel.channelType == ChannelType.DirectMessage) {
+                            ChannelUtils.resolveDMPartner(currentChannel)?.let { partnerId ->
+                                scope.launch {
+                                    ActionChannel.send(Action.OpenUserSheet(partnerId, null))
+                                }
+                            }
+                        } else {
+                            channelInfoSheetShown = true
+                        }
                     },
                     title = {
                         Row(
@@ -766,7 +775,14 @@ fun ChannelScreen(
                                             userId = ChannelUtils.resolveDMPartner(it) ?: "",
                                             size = 24.dp,
                                             presenceSize = 12.dp,
-                                            avatar = partner?.avatar
+                                            avatar = partner?.avatar,
+                                            onClick = {
+                                                ChannelUtils.resolveDMPartner(it)?.let { partnerId ->
+                                                    scope.launch {
+                                                        ActionChannel.send(Action.OpenUserSheet(partnerId, null))
+                                                    }
+                                                }
+                                            }
                                         )
                                     }
 

@@ -1,25 +1,41 @@
 package chat.stoat.media
 
 import android.content.Context
+import androidx.annotation.OptIn
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.File
 
 object GlobalAudioPlayer {
     private var exoPlayer: ExoPlayer? = null
     private var progressJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Main)
+
+    @OptIn(UnstableApi::class)
+    private var simpleCache: SimpleCache? = null
 
     var currentUrl by mutableStateOf<String?>(null)
         private set
@@ -36,32 +52,102 @@ object GlobalAudioPlayer {
     var progressFraction by mutableFloatStateOf(0f)
         private set
 
+    @OptIn(UnstableApi::class)
+    private fun getCache(context: Context): SimpleCache {
+        val existing = simpleCache
+        if (existing != null) return existing
+        return synchronized(this) {
+            simpleCache ?: run {
+                val cacheDir = File(context.cacheDir, "audio_cache")
+                val evictor = LeastRecentlyUsedCacheEvictor(100 * 1024 * 1024L) // 100MB
+                val databaseProvider = StandaloneDatabaseProvider(context)
+                SimpleCache(cacheDir, evictor, databaseProvider).also { simpleCache = it }
+            }
+        }
+    }
+
+    @OptIn(UnstableApi::class)
     private fun getOrCreatePlayer(context: Context): ExoPlayer {
         val existing = exoPlayer
         if (existing != null) return existing
 
-        return ExoPlayer.Builder(context.applicationContext).build().apply {
-            addListener(object : Player.Listener {
-                override fun onIsPlayingChanged(playing: Boolean) {
-                    this@GlobalAudioPlayer.isPlaying = playing
-                }
+        val appContext = context.applicationContext
 
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    this@GlobalAudioPlayer.isLoading = (playbackState == Player.STATE_BUFFERING)
-                    if (playbackState == Player.STATE_READY) {
-                        val dur = (this@apply.duration).coerceAtLeast(0L)
-                        this@GlobalAudioPlayer.duration = dur
-                    } else if (playbackState == Player.STATE_ENDED) {
-                        this@GlobalAudioPlayer.isPlaying = false
-                        this@GlobalAudioPlayer.currentPosition = 0L
-                        this@GlobalAudioPlayer.progressFraction = 0f
-                        this@apply.seekTo(0)
-                        this@apply.pause()
-                    }
-                }
-            })
-            exoPlayer = this
+        // High performance load control for instant audio playback
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 2_500,
+                /* maxBufferMs = */ 15_000,
+                /* bufferForPlaybackMs = */ 100, // Starts immediately after 100ms buffered
+                /* bufferForPlaybackAfterRebufferMs = */ 250
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(8000)
+            .setReadTimeoutMs(8000)
+            .setUserAgent("Dismod/1.0 (Android)")
+
+        val cache = try {
+            getCache(appContext)
+        } catch (e: Exception) {
+            null
         }
+
+        val dataSourceFactory = if (cache != null) {
+            CacheDataSource.Factory()
+                .setCache(cache)
+                .setUpstreamDataSourceFactory(httpDataSourceFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        } else {
+            httpDataSourceFactory
+        }
+
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+            .build()
+
+        return ExoPlayer.Builder(appContext)
+            .setLoadControl(loadControl)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .setAudioAttributes(audioAttributes, true)
+            .build().apply {
+                addListener(object : Player.Listener {
+                    override fun onIsPlayingChanged(playing: Boolean) {
+                        this@GlobalAudioPlayer.isPlaying = playing
+                        if (playing) {
+                            this@GlobalAudioPlayer.isLoading = false
+                        }
+                    }
+
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        this@GlobalAudioPlayer.isLoading = (playbackState == Player.STATE_BUFFERING)
+                        if (playbackState == Player.STATE_READY) {
+                            val dur = (this@apply.duration).coerceAtLeast(0L)
+                            this@GlobalAudioPlayer.duration = dur
+                            this@GlobalAudioPlayer.isLoading = false
+                        } else if (playbackState == Player.STATE_ENDED) {
+                            this@GlobalAudioPlayer.isPlaying = false
+                            this@GlobalAudioPlayer.isLoading = false
+                            this@GlobalAudioPlayer.currentPosition = 0L
+                            this@GlobalAudioPlayer.progressFraction = 0f
+                            this@apply.seekTo(0)
+                            this@apply.pause()
+                        }
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        this@GlobalAudioPlayer.isLoading = false
+                        this@GlobalAudioPlayer.isPlaying = false
+                    }
+                })
+                exoPlayer = this
+            }
     }
 
     fun play(context: Context, url: String, title: String) {
@@ -80,6 +166,7 @@ object GlobalAudioPlayer {
         currentPosition = 0L
         duration = 0L
         progressFraction = 0f
+        isLoading = true
 
         player.setMediaItem(MediaItem.fromUri(url))
         player.prepare()

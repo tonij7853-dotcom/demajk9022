@@ -1,9 +1,7 @@
 package chat.stoat.sheets
 
-import android.text.format.DateUtils
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,16 +23,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -64,10 +68,16 @@ import chat.stoat.api.StoatAPI
 import chat.stoat.api.internals.BrushCompat
 import chat.stoat.api.internals.ULID
 import chat.stoat.api.internals.solidColor
+import chat.stoat.api.routes.user.acceptFriendRequest
 import chat.stoat.api.routes.user.fetchUserProfile
+import chat.stoat.api.routes.user.friendUser
 import chat.stoat.api.routes.user.getOrFetchUser
+import chat.stoat.api.routes.user.openDM
+import chat.stoat.api.routes.user.unfriendUser
 import chat.stoat.api.settings.Experiments
 import chat.stoat.api.settings.FeatureFlags
+import chat.stoat.callbacks.Action
+import chat.stoat.callbacks.ActionChannel
 import chat.stoat.composables.chat.UserBadgeRow
 import chat.stoat.composables.generic.NonIdealState
 import chat.stoat.composables.generic.RemoteImage
@@ -77,14 +87,24 @@ import chat.stoat.composables.markdown.prose.ChatMarkdown
 import chat.stoat.composables.profile.CosmeticEffectOverlay
 import chat.stoat.composables.profile.ProfileCosmeticsStore
 import chat.stoat.composables.profile.bannerBrush
-import chat.stoat.composables.screens.settings.UserButtons
 import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.core.model.schemas.AutumnResource
 import chat.stoat.core.model.schemas.Profile
 import chat.stoat.core.model.schemas.User
+import chat.stoat.internals.CustomNicknames
 import chat.stoat.persistence.KVStorage
+import chat.stoat.screens.chat.dialogs.ChangeNicknameDialog
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+private fun formatDiscordDate(timestampMs: Long): String {
+    val date = Date(timestampMs)
+    val sdf = SimpleDateFormat("MMM d, yyyy", Locale.US)
+    return sdf.format(date)
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -96,6 +116,7 @@ fun UserInfoSheet(
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
+    val kvStorage = remember { KVStorage(context) }
 
     var user by remember(userId) { mutableStateOf(StoatAPI.userCache[userId]) }
     var isLoadingUser by remember(userId) { mutableStateOf(user == null) }
@@ -105,9 +126,15 @@ fun UserInfoSheet(
     var profile by remember { mutableStateOf<Profile?>(null) }
     var showUserCard by remember { mutableStateOf(false) }
     var showServerIdentityOptions by remember { mutableStateOf(false) }
+    var showChangeNicknameDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
 
+    var userNote by remember(userId) {
+        mutableStateOf("")
+    }
+
     LaunchedEffect(userId) {
+        userNote = kvStorage.get("user_note/$userId") ?: ""
         if (user == null) {
             try {
                 user = getOrFetchUser(userId)
@@ -127,6 +154,19 @@ fun UserInfoSheet(
                 e.printStackTrace()
             }
         }
+    }
+
+    if (showChangeNicknameDialog && user != null) {
+        val currentNick = if (serverId != null) member?.nickname else CustomNicknames.getNickname(user!!.id ?: "")
+        ChangeNicknameDialog(
+            userId = user!!.id ?: userId,
+            serverId = serverId,
+            currentNickname = currentNick,
+            onDismissRequest = { showChangeNicknameDialog = false },
+            onNicknameSaved = {
+                showChangeNicknameDialog = false
+            }
+        )
     }
 
     if (showUserCard && user != null) {
@@ -189,7 +229,7 @@ fun UserInfoSheet(
 
     LaunchedEffect(currentUser.id, isSelf) {
         if (isSelf && currentUser.id != null) {
-            ProfileCosmeticsStore.load(KVStorage(context), currentUser.id!!)
+            ProfileCosmeticsStore.load(kvStorage, currentUser.id!!)
         }
     }
 
@@ -234,9 +274,9 @@ fun UserInfoSheet(
                         .background(
                             chosenBanner ?: Brush.horizontalGradient(
                                 listOf(
-                                    Color(0xFF3C4370),
-                                    Color(0xFF5865F2),
-                                    Color(0xFF4752C4)
+                                    Color(0xFF1E1F22),
+                                    Color(0xFF2B2D31),
+                                    Color(0xFF1E1F22)
                                 )
                             )
                         )
@@ -293,6 +333,16 @@ fun UserInfoSheet(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(
+                            text = { Text(if (serverId != null) "Change Server Nickname" else "Change Nickname") },
+                            onClick = {
+                                showMenu = false
+                                showChangeNicknameDialog = true
+                            },
+                            leadingIcon = {
+                                Icon(painterResource(R.drawable.ic_edit_24dp), contentDescription = null)
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text("Copy User ID") },
                             onClick = {
                                 currentUser.id?.let { id ->
@@ -329,23 +379,37 @@ fun UserInfoSheet(
         ) {
             Column {
                 // Gap for avatar overlap
-                Spacer(modifier = Modifier.height(44.dp))
+                Spacer(modifier = Modifier.height(46.dp))
 
-                // Display Name + Pronouns
+                // Display Name + Edit Nickname Icon + Pronouns
+                val effectiveNickname = if (serverId != null) member?.nickname else CustomNicknames.getNickname(currentUser.id ?: "")
+                val displayName = effectiveNickname
+                    ?: currentUser.displayName?.takeIf { it.isNotBlank() }
+                    ?: currentUser.username
+                    ?: "Unknown"
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val displayName = currentUser.displayName?.takeIf { it.isNotBlank() }
-                        ?: currentUser.username
-                        ?: "Unknown"
-
                     Text(
                         text = displayName,
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+
+                    IconButton(
+                        onClick = { showChangeNicknameDialog = true },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_edit_24dp),
+                            contentDescription = "Change Nickname",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
 
                     currentUser.pronouns?.trim()?.takeIf { it.isNotEmpty() }?.let { pronouns ->
                         Box(
@@ -363,22 +427,59 @@ fun UserInfoSheet(
                     }
                 }
 
-                // Handle (@username#1234)
-                Text(
-                    text = "@${currentUser.username ?: ""}${if (currentUser.discriminator != null && currentUser.discriminator != "0000") "#${currentUser.discriminator}" else ""}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                // Username & Badges row directly below display name (Discord style)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 2.dp)
+                ) {
+                    Text(
+                        text = "@${currentUser.username ?: ""}${if (currentUser.discriminator != null && currentUser.discriminator != "0000") "#${currentUser.discriminator}" else ""}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-                // 3. CUSTOM STATUS BUBBLE (Discord speech bubble)
+                    if ((currentUser.badges ?: 0) > 0) {
+                        UserBadgeRow(badges = currentUser.badges!!)
+                    }
+                }
+
+                // Mutual Server indicator (Discord style)
+                val mutualServerCount = remember(currentUser.id) {
+                    if (currentUser.id == null || currentUser.id == StoatAPI.selfId) 0
+                    else StoatAPI.serverCache.values.count { s ->
+                        s.id != null && (StoatAPI.members.hasMember(s.id!!, currentUser.id!!) || s.owner == currentUser.id)
+                    }
+                }
+                if (mutualServerCount > 0) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_group_24dp),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "$mutualServerCount Mutual Server${if (mutualServerCount > 1) "s" else ""}",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // 3. CUSTOM STATUS BUBBLE (if present)
                 if (currentUser.status?.text != null && currentUser.status!!.text!!.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -386,7 +487,7 @@ fun UserInfoSheet(
                         ) {
                             Text(
                                 text = "💬",
-                                fontSize = 16.sp
+                                fontSize = 15.sp
                             )
                             Text(
                                 text = currentUser.status!!.text!!,
@@ -397,43 +498,262 @@ fun UserInfoSheet(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // 4. ACTION BUTTONS (Discord style: Wide primary + Message icon + Call icon)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!isSelf) {
+                        when (currentUser.relationship) {
+                            "Friend" -> {
+                                FilledTonalButton(
+                                    onClick = {
+                                        scope.launch {
+                                            try {
+                                                currentUser.id?.let { unfriendUser(it) }
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(42.dp)
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_check_24dp),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Friends", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            "Incoming" -> {
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            try {
+                                                currentUser.id?.let { acceptFriendRequest(it) }
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5865F2)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(42.dp)
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_person_add_24dp),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Accept Friend", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            "Outgoing" -> {
+                                FilledTonalButton(
+                                    onClick = {},
+                                    enabled = false,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(42.dp)
+                                ) {
+                                    Text("Request Sent", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            else -> {
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            try {
+                                                friendUser("${currentUser.username}#${currentUser.discriminator}")
+                                                Toast.makeText(context, "Friend request sent", Toast.LENGTH_SHORT).show()
+                                            } catch (e: Exception) {
+                                                if (e.message != "NoEffect") {
+                                                    Toast.makeText(context, e.message ?: "Failed", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5865F2)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(42.dp)
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_person_add_24dp),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Add Friend", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        // Message icon button
+                        FilledTonalIconButton(
+                            onClick = {
+                                scope.launch {
+                                    currentUser.id?.let { uid ->
+                                        val dm = openDM(uid)
+                                        if (dm.id != null) {
+                                            StoatAPI.channelCache[dm.id!!] = dm
+                                            ActionChannel.send(Action.SwitchChannel(dm.id!!))
+                                            dismissSheet()
+                                        }
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_chat_24dp),
+                                contentDescription = "Send Message",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        // Call icon button
+                        FilledTonalIconButton(
+                            onClick = {
+                                Toast.makeText(context, "Voice call not supported in this channel", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_call_24dp__fill),
+                                contentDescription = "Call",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    } else {
+                        Button(
+                            onClick = { showChangeNicknameDialog = true },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.ic_edit_24dp),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (serverId != null) "Edit Server Nickname" else "Edit Profile", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 4. ACTION BUTTONS (Send Message / Add Friend / Edit Profile)
-                UserButtons(currentUser, dismissSheet)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 5. ABOUT ME / BIO
-                if (profile?.content?.isNotBlank() == true) {
+                // 5. BIO / ABOUT ME (Discord style)
+                val bioContent = profile?.content?.takeIf { it.isNotBlank() } ?: currentUser.status?.text
+                if (!bioContent.isNullOrBlank()) {
                     Text(
-                        text = "ABOUT ME",
-                        style = MaterialTheme.typography.labelMedium,
+                        text = "Bio",
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     SelectionContainer {
-                        ChatMarkdown(content = profile!!.content!!, serverId = serverId)
+                        ChatMarkdown(content = bioContent, serverId = serverId)
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                // 6. ROLES SECTION (If server member has roles)
+                // 6. MEMBER SINCE (Discord style)
+                val joinedAtMs = member?.joinedAt?.let {
+                    runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull()
+                }
+                val accountAtMs = currentUser.id?.let {
+                    runCatching { ULID.asTimestamp(it) }.getOrNull()
+                }
+
+                Text(
+                    text = "Member Since",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (accountAtMs != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.stoat_logo_white),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = formatDiscordDate(accountAtMs),
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    if (joinedAtMs != null) {
+                        Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_group_24dp),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = formatDiscordDate(joinedAtMs),
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 7. ROLES SECTION (Discord style pills)
                 val memberRoles = member?.roles?.mapNotNull { roleId -> server?.roles?.get(roleId) }
                     ?.sortedBy { it.rank ?: 0.0 }
                 if (!memberRoles.isNullOrEmpty()) {
                     Text(
-                        text = "ROLES",
-                        style = MaterialTheme.typography.labelMedium,
+                        text = "Roles",
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -445,11 +765,11 @@ fun UserInfoSheet(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .padding(horizontal = 8.dp, vertical = 5.dp)
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Box(
                                         modifier = Modifier
@@ -461,7 +781,7 @@ fun UserInfoSheet(
                                     )
                                     Text(
                                         text = role.name ?: "",
-                                        style = MaterialTheme.typography.labelMedium,
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
@@ -471,82 +791,99 @@ fun UserInfoSheet(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                // 7. BADGES SECTION
-                if ((currentUser.badges ?: 0) > 0) {
+                // 8. MODERATOR ACTIONS (Discord style Manage card)
+                if (serverId != null) {
                     Text(
-                        text = "BADGES",
-                        style = MaterialTheme.typography.labelMedium,
+                        text = "Moderator Actions",
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    UserBadgeRow(badges = currentUser.badges!!)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showChangeNicknameDialog = true }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_settings_24dp),
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Manage",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                // 8. MEMBER DATES (Member since)
-                val joinedAt = member?.joinedAt?.let {
-                    DateUtils.getRelativeTimeSpanString(
-                        Instant.parse(it).toEpochMilliseconds(),
-                        System.currentTimeMillis(),
-                        DateUtils.MINUTE_IN_MILLIS
-                    ).toString()
-                }
-                val accountAt = currentUser.id?.let {
-                    DateUtils.getRelativeTimeSpanString(
-                        ULID.asTimestamp(it),
-                        System.currentTimeMillis(),
-                        DateUtils.MINUTE_IN_MILLIS
-                    ).toString()
-                }
-
-                Text(
-                    text = "MEMBER SINCE",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(6.dp))
+                // 9. NOTE (only visible to you) (Discord style)
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    if (joinedAt != null && server?.name != null) {
-                        Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Note (only visible to you)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Icon(
+                        painter = painterResource(R.drawable.ic_note_stack_24dp),
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = userNote,
+                        onValueChange = {
+                            userNote = it
+                            scope.launch {
+                                currentUser.id?.let { uid ->
+                                    kvStorage.set("user_note/$uid", it)
+                                }
+                            }
+                        },
+                        placeholder = {
                             Text(
-                                text = server.name!!,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = joinedAt,
+                                "Click to add a note",
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                    if (accountAt != null) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Dismod",
-                                style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Text(
-                                text = accountAt,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(4.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedBorderColor = Color.Transparent
+                        ),
+                        maxLines = 3
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
-            // Circular Avatar overlapping banner
+            // Circular Avatar overlapping banner with presence status dot
             Box(
                 modifier = Modifier
                     .offset(y = (-40).dp)
@@ -559,6 +896,7 @@ fun UserInfoSheet(
                     userId = currentUser.id ?: ULID.makeSpecial(0),
                     avatar = currentUser.avatar,
                     size = 76.dp,
+                    presenceSize = 22.dp,
                     decorationId = avatarDecoration,
                     presence = presenceFromStatus(currentUser.status?.presence, currentUser.online ?: false)
                 )

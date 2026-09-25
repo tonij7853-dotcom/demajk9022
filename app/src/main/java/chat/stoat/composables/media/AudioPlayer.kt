@@ -8,8 +8,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -127,9 +131,16 @@ fun AudioPlayer(url: String, filename: String, contentType: String) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceContainer)
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .border(
+                BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                ),
+                RoundedCornerShape(16.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         // Minimal Circular Play / Pause Button
         Box(
@@ -254,93 +265,108 @@ fun TelegramTopAudioPlayerBar(
 
     AnimatedVisibility(
         visible = isVisible,
-        enter = expandVertically(),
-        exit = shrinkVertically()
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically()
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            shadowElevation = 2.dp,
-            modifier = modifier.fillMaxWidth()
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    // Play/Pause icon button
-                    IconButton(
-                        onClick = { GlobalAudioPlayer.togglePlay() },
-                        modifier = Modifier.size(36.dp)
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shadowElevation = 6.dp,
+                tonalElevation = 2.dp,
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
-                        if (GlobalAudioPlayer.isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary
+                        // Play/Pause icon button
+                        IconButton(
+                            onClick = { GlobalAudioPlayer.togglePlay() },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            if (GlobalAudioPlayer.isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                Icon(
+                                    painter = painterResource(
+                                        if (GlobalAudioPlayer.isPlaying) R.drawable.ic_pause_24dp
+                                        else R.drawable.ic_play_arrow_24dp
+                                    ),
+                                    contentDescription = if (GlobalAudioPlayer.isPlaying) "Pause" else "Play",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        // Title & Time info
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = GlobalAudioPlayer.currentTitle ?: "Audio",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp
+                                )
                             )
-                        } else {
-                            Icon(
-                                painter = painterResource(
-                                    if (GlobalAudioPlayer.isPlaying) R.drawable.ic_pause_24dp
-                                    else R.drawable.ic_play_arrow_24dp
+                            Text(
+                                text = "${GlobalAudioPlayer.formatTime(GlobalAudioPlayer.currentPosition)} / ${GlobalAudioPlayer.formatTime(GlobalAudioPlayer.duration)}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontFeatureSettings = "tnum"
                                 ),
-                                contentDescription = if (GlobalAudioPlayer.isPlaying) "Pause" else "Play",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(22.dp)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Close / Stop button
+                        IconButton(
+                            onClick = { GlobalAudioPlayer.stop() },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_close_24dp),
+                                contentDescription = "Close player",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    // Title & Time info
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = GlobalAudioPlayer.currentTitle ?: "Audio",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.sp
-                            )
-                        )
-                        Text(
-                            text = "${GlobalAudioPlayer.formatTime(GlobalAudioPlayer.currentPosition)} / ${GlobalAudioPlayer.formatTime(GlobalAudioPlayer.duration)}",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 10.sp,
-                                fontFeatureSettings = "tnum"
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // Close / Stop button
-                    IconButton(
-                        onClick = { GlobalAudioPlayer.stop() },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_close_24dp),
-                            contentDescription = "Close player",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                    // Progress bar neatly rounded at the bottom of the floating card
+                    LinearProgressIndicator(
+                        progress = { GlobalAudioPlayer.progressFraction },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
                 }
-
-                // Thin Telegram-style progress bar along the bottom
-                LinearProgressIndicator(
-                    progress = { GlobalAudioPlayer.progressFraction },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(2.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
-                )
             }
         }
     }

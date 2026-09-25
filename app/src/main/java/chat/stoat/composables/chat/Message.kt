@@ -149,14 +149,17 @@ fun authorName(message: MessageSchema): String {
         return message.masquerade!!.name!!
     }
 
-    val serverId =
-        StoatAPI.channelCache[message.channel]?.server
-            ?: return StoatAPI.userCache[message.author]?.let { User.resolveDefaultName(it) }
-                ?: stringResource(R.string.unknown)
+    val serverId = StoatAPI.channelCache[message.channel]?.server
+    if (serverId == null) {
+        val customNick = message.author?.let { chat.stoat.internals.CustomNicknames.getNickname(it) }
+        if (customNick != null) return customNick
+        return StoatAPI.userCache[message.author]?.let { User.resolveDefaultName(it) }
+            ?: stringResource(R.string.unknown)
+    }
 
     val member = message.author?.let { StoatAPI.members.getMember(serverId, it) }
-        ?: return stringResource(R.string.unknown)
-    return member.nickname
+    return member?.nickname
+        ?: message.author?.let { chat.stoat.internals.CustomNicknames.getNickname(it) }
         ?: StoatAPI.userCache[message.author]?.let { User.resolveDefaultName(it) }
         ?: stringResource(R.string.unknown)
 }
