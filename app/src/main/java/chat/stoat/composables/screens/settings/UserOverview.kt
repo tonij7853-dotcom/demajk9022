@@ -47,6 +47,8 @@ import chat.stoat.composables.profile.Nameplate
 import chat.stoat.composables.profile.ProfileCosmeticsStore
 import chat.stoat.composables.profile.bannerBrush
 import chat.stoat.composables.profile.bannerOverlay
+import chat.stoat.composables.generic.AvatarViewerDialog
+import chat.stoat.api.internals.ResourceLocations
 import chat.stoat.persistence.KVStorage
 import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.core.model.schemas.AutumnResource
@@ -89,6 +91,7 @@ fun RawUserOverview(
     cardHeight: Dp = 128.dp
 ) {
     val context = LocalContext.current
+    var showFullAvatar by remember { mutableStateOf(false) }
     val cosmetics by ProfileCosmeticsStore.current
     val isSelf = user.id != null && user.id == StoatAPI.selfId
     LaunchedEffect(user.id, isSelf) {
@@ -198,7 +201,8 @@ fun RawUserOverview(
                 avatar = user.avatar,
                 size = if (cardHeight > 128.dp) 76.dp else 48.dp,
                 decorationId = avatarDecoration,
-                presence = presenceFromStatus(user.status?.presence, user.online ?: false)
+                presence = presenceFromStatus(user.status?.presence, user.online ?: false),
+                onClick = { showFullAvatar = true }
             )
 
             Spacer(modifier = Modifier.width(12.dp))
@@ -243,5 +247,17 @@ fun RawUserOverview(
                 )
             }
         }
+    }
+
+    if (showFullAvatar) {
+        val fullUrl = pfpUrl
+            ?: user.avatar?.let { "$STOAT_FILES/avatars/${it.id}/original" }
+            ?: ResourceLocations.userAvatarOriginalUrl(user)
+        AvatarViewerDialog(
+            avatarUrl = fullUrl,
+            username = user.username ?: "user",
+            displayName = user.displayName,
+            onDismissRequest = { showFullAvatar = false }
+        )
     }
 }

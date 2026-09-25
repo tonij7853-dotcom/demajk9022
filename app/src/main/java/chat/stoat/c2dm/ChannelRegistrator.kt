@@ -24,6 +24,9 @@ class ChannelRegistrator(val context: Context) {
 
         const val CHANNEL_ID_GROUP_VOICE = "chat.stoat.voice"
         const val CHANNEL_ID_GROUP_VOICE_ONGOING = "chat.stoat.voice.ongoing"
+
+        @Volatile
+        var isRegistered = false
     }
 
     private val notificationManager =
@@ -71,6 +74,10 @@ class ChannelRegistrator(val context: Context) {
                 group = CHANNEL_ID_GROUP_CONVERSATIONS
                 description =
                     context.getString(R.string.notification_channel_messages_description)
+                enableVibration(true)
+                enableLights(true)
+                setShowBadge(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
         )
         notificationManager.createNotificationChannel(
@@ -88,8 +95,10 @@ class ChannelRegistrator(val context: Context) {
         )
     }
 
-    fun register() {
+    fun register(force: Boolean = false) {
+        if (isRegistered && !force) return
         registerGroups()
         registerChannels()
+        isRegistered = true
     }
 }

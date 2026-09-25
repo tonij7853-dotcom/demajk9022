@@ -50,6 +50,8 @@ class NotificationsSettingsScreenViewModel(
         private set
     var isUpdating by mutableStateOf(false)
         private set
+    var isBatteryOptimizationIgnored by mutableStateOf(false)
+        private set
 
     init {
         refresh()
@@ -58,6 +60,29 @@ class NotificationsSettingsScreenViewModel(
     fun refresh() {
         viewModelScope.launch {
             isPushEnabled = checkPushEnabled()
+            checkBatteryOptimization()
+        }
+    }
+
+    private fun checkBatteryOptimization() {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+        isBatteryOptimizationIgnored = pm?.isIgnoringBatteryOptimizations(context.packageName) ?: true
+    }
+
+    fun requestDisableBatteryOptimization() {
+        try {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = android.net.Uri.parse("package:${context.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            try {
+                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (_: Exception) {}
         }
     }
 
@@ -80,6 +105,7 @@ class NotificationsSettingsScreenViewModel(
         viewModelScope.launch {
             kvStorage.set("notifications_enabled", true)
             kvStorage.remove("pushNotificationsRejected")
+            chat.stoat.c2dm.DismodNotificationPoster.areNotificationsEnabled = true
             isPushEnabled = true
             showRationale = false
             runCatching { subscribeIfNeeded() }
@@ -125,6 +151,7 @@ class NotificationsSettingsScreenViewModel(
             try {
                 kvStorage.set("notifications_enabled", false)
                 kvStorage.set("pushNotificationsRejected", true)
+                chat.stoat.c2dm.DismodNotificationPoster.areNotificationsEnabled = false
                 val token = kvStorage.get("fcmToken")
                 if (token != null) {
                     runCatching { unsubscribePush() }
@@ -150,6 +177,19 @@ fun NotificationsSettingsScreen(
     ) { isGranted ->
         if (isGranted) {
             viewModel.enableNotifications()
+        }
+    }
+
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.refresh()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -189,6 +229,36 @@ fun NotificationsSettingsScreen(
                     if (viewModel.isPushEnabled) viewModel.disablePush()
                     else viewModel.onEnableRequested()
                 }
+        )
+        CenteredListItem(
+            headlineContent = { Text("Instant Delivery (Battery Optimization)") },
+            supportingContent = {
+                Text(
+                    if (viewModel.isBatteryOptimizationIgnored)
+                        "Unrestricted · Notifications arrive instantly even when phone is locked"
+                    else
+                        "Optimized · Tap to set Unrestricted so Android does not delay background notifications"
+                )
+            },
+            trailingContent = {
+                if (viewModel.isBatteryOptimizationIgnored) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_check_24dp),
+                        contentDescription = null,
+                        tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_arrow_forward_24dp),
+                        contentDescription = null,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+            },
+            modifier = Modifier.clickable {
+                viewModel.requestDisableBatteryOptimization()
+            }
         )
         CenteredListItem(
             headlineContent = { Text(stringResource(R.string.settings_notifications_system)) },

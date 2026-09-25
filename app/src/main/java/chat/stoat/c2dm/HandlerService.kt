@@ -118,6 +118,11 @@ class HandlerService : FirebaseMessagingService() {
             return
         }
 
+        // Only suppress notification if user is currently inside this exact channel
+        if (ActiveChannelTracker.isAppInForeground && ActiveChannelTracker.activeChannelId == channelId) {
+            return
+        }
+
         val messageId = data["message"] ?: run {
             logcat(LogPriority.ERROR) { "No message ID in message, abort" }
             return
@@ -154,24 +159,22 @@ class HandlerService : FirebaseMessagingService() {
             } ?: authorName
         }
 
-        fun loadBitmap(url: String) = Glide.with(this)
-            .asBitmap()
-            .load(url)
-            .circleCrop()
-            .submit()
-            .get()
+        fun loadBitmap(url: String): Bitmap? = runCatching {
+            Glide.with(this)
+                .asBitmap()
+                .load(url)
+                .circleCrop()
+                .timeout(800)
+                .submit()
+                .get(800, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }.getOrNull()
 
         val kv = KVStorage(this)
         val selfId = runBlocking { kv.get("selfId") }.orEmpty()
         val selfName = runBlocking { kv.get("selfName") }.orEmpty()
-        val selfAvatarUrl = runBlocking { kv.get("selfAvatarUrl") }
 
-        val selfBitmap: Bitmap = if (!selfAvatarUrl.isNullOrEmpty()) {
-            runCatching { loadBitmap(selfAvatarUrl) }.getOrNull()
-                ?: generateLetterBitmap(selfName.ifEmpty { "?" })
-        } else {
-            generateLetterBitmap(selfName.ifEmpty { "?" })
-        }
+        // Do not block background worker downloading own avatar over HTTP - Android only renders sender avatar
+        val selfBitmap: Bitmap = generateLetterBitmap(selfName.ifEmpty { "Me" })
 
         val self = Person.Builder()
             .setBot(false)
@@ -182,19 +185,23 @@ class HandlerService : FirebaseMessagingService() {
 
         val dbChannel = db.channelQueries.findById(channelId).executeAsOneOrNull()
 
-        val authorBitmap = runCatching { loadBitmap(image) }.getOrElse { generateLetterBitmap(authorName) }
+        val authorBitmap = if (image.isNotEmpty()) {
+            loadBitmap(image) ?: generateLetterBitmap(authorName)
+        } else {
+            generateLetterBitmap(authorName)
+        }
         val conversationBitmap: Bitmap = when (dbChannel?.channelType) {
             "TextChannel", "VoiceChannel" -> {
                 val server =
                     dbChannel.server?.let { db.serverQueries.findById(it).executeAsOneOrNull() }
                 val iconUrl = server?.iconId?.let { "$STOAT_FILES/icons/$it" }
-                iconUrl?.let { runCatching { loadBitmap(it) }.getOrNull() }
+                (iconUrl?.let { loadBitmap(it) })
                     ?: generateLetterBitmap(server?.name ?: channelName)
             }
 
             "Group" -> {
                 val iconUrl = dbChannel.iconId?.let { "$STOAT_FILES/icons/$it" }
-                iconUrl?.let { runCatching { loadBitmap(it) }.getOrNull() }
+                (iconUrl?.let { loadBitmap(it) })
                     ?: generateLetterBitmap(dbChannel.name ?: channelName)
             }
 
@@ -286,6 +293,9 @@ class HandlerService : FirebaseMessagingService() {
             .setConversationTitle(channelName)
             .addMessage(body, messageTimestamp, author)
 
+        // Ensure notification channel is properly registered
+        ChannelRegistrator(this).register()
+
         val builder = NotificationCompat.Builder(this, CHANNEL_ID_GROUP_CONVERSATIONS_MESSAGES)
             .setSmallIcon(R.drawable.ic_stoat_24dp)
             .setContentTitle(authorName)
@@ -295,7 +305,8 @@ class HandlerService : FirebaseMessagingService() {
             .setStyle(messagingStyle)
             .addAction(replyAction)
             .addAction(markAsReadAction)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
 
         // Android 11 bubbles

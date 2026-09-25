@@ -11,4 +11,11 @@ object ResourceLocations {
         }
         return "/users/${(user?.id ?: "").ifBlank { "0".repeat(26) }}/default_avatar".api()
     }
+
+    fun userAvatarOriginalUrl(user: User?): String {
+        if (user?.avatar != null) {
+            return "$STOAT_FILES/avatars/${user.avatar!!.id}/original"
+        }
+        return userAvatarUrl(user)
+    }
 }

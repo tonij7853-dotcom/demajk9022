@@ -1,7 +1,9 @@
 package chat.stoat
 
+import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.os.Bundle
 import android.os.Build
 import android.os.StrictMode
 import chat.stoat.di.appModule
@@ -36,6 +38,29 @@ class StoatApplication : Application(), SingletonImageLoader.Factory {
         chat.stoat.api.settings.SyncedSettings.initFromStorage(this)
         chat.stoat.c2dm.ChannelRegistrator(this).register()
         chat.stoat.internals.CustomNicknames.init(this)
+
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            private var startedActivityCount = 0
+
+            override fun onActivityStarted(activity: Activity) {
+                startedActivityCount++
+                chat.stoat.c2dm.ActiveChannelTracker.isAppInForeground = true
+            }
+
+            override fun onActivityStopped(activity: Activity) {
+                startedActivityCount = (startedActivityCount - 1).coerceAtLeast(0)
+                chat.stoat.c2dm.ActiveChannelTracker.isAppInForeground = startedActivityCount > 0
+            }
+
+            override fun onActivityResumed(activity: Activity) {
+                chat.stoat.c2dm.ActiveChannelTracker.isAppInForeground = true
+            }
+
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        })
 
         startKoin {
             androidContext(this@StoatApplication)
