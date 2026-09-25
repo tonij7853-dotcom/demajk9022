@@ -53,11 +53,11 @@ jobs:
 
           TAG_NAME="${{ github.ref_name }}"
           if [[ "$TAG_NAME" == "main" || "$TAG_NAME" == "master" ]]; then
-            TAG_NAME="v1.7.${{ github.run_number }}"
+            TAG_NAME="v1.8.${{ github.run_number }}"
           fi
 
           VERSION_NAME="${TAG_NAME#v}"
-          VERSION_CODE=$((1007000 + ${{ github.run_number }}))
+          VERSION_CODE=$((1008000 + ${{ github.run_number }}))
           CHANGELOG="${{ github.event.inputs.changelog || github.event.head_commit.message || 'Latest Dismod update' }}"
 
           cat <<EOF > release-artifacts/version.json
@@ -66,7 +66,7 @@ jobs:
             "versionName": "$VERSION_NAME",
             "apkUrl": "https://github.com/${{ github.repository }}/releases/download/$TAG_NAME/dismod.apk",
             "changelog": "$CHANGELOG",
-            "forceUpdate": false
+            "forceUpdate": true
           }
           EOF
 

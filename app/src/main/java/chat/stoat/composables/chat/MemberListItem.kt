@@ -91,6 +91,8 @@ fun MemberListItem(
         headlineContent = {
             Text(
                 text = member?.nickname
+                    ?: user?.let { chat.stoat.internals.CustomNicknames.resolveName(it, serverId) }
+                    ?: chat.stoat.internals.CustomNicknames.getNickname(userId)
                     ?: user?.displayName
                     ?: user?.username
                     ?: user?.id

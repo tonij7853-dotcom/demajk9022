@@ -25,7 +25,7 @@ class StoatGlideModule : AppGlideModule() {
         builder.setDiskCache(InternalCacheDiskCacheFactory(context, 250L * 1024 * 1024))
         builder.setDefaultRequestOptions(
             RequestOptions()
-                .format(DecodeFormat.PREFER_RGB_565)
+                .format(DecodeFormat.PREFER_ARGB_8888)
                 .diskCacheStrategy(DiskCacheStrategy.DATA)
         )
     }
