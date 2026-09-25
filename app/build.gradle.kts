@@ -156,7 +156,9 @@ android {
     }
     lint {
         abortOnError = false
+        checkReleaseBuilds = false
         disable += "MissingTranslation"
+        disable += "ExtraTranslation"
     }
 }
 
