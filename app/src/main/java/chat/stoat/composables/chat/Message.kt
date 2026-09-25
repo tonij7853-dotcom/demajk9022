@@ -131,14 +131,17 @@ fun authorRoleIcon(message: MessageSchema): AutumnResource? {
 
 @Composable
 fun displayNameInChannel(userId: String, channelId: String): String {
-    val serverId =
-        StoatAPI.channelCache[channelId]?.server
-            ?: return StoatAPI.userCache[userId]?.let { User.resolveDefaultName(it) }
-                ?: stringResource(R.string.unknown)
+    val serverId = StoatAPI.channelCache[channelId]?.server
+    if (serverId == null) {
+        val customNick = chat.stoat.internals.CustomNicknames.getNickname(userId)
+        if (customNick != null) return customNick
+        return StoatAPI.userCache[userId]?.let { User.resolveDefaultName(it) }
+            ?: stringResource(R.string.unknown)
+    }
 
     val member = userId.let { StoatAPI.members.getMember(serverId, it) }
-        ?: return stringResource(R.string.unknown)
-    return member.nickname
+    return member?.nickname
+        ?: chat.stoat.internals.CustomNicknames.getNickname(userId)
         ?: StoatAPI.userCache[userId]?.let { User.resolveDefaultName(it) }
         ?: stringResource(R.string.unknown)
 }

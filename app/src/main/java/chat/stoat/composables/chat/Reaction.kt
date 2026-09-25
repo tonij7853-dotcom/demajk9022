@@ -72,10 +72,17 @@ fun Reaction(
             .padding(8.dp)
     ) {
         CompositionLocalProvider(LocalContentColor provides foreground) {
+            val dismodEmoji = chat.stoat.internals.DismodEmojiManager.findEmojiByShortcode(emoji)
             if (emoji.isUlid()) {
                 RemoteImage(
                     url = "$STOAT_FILES/emojis/${emoji}",
                     description = null,
+                    modifier = Modifier.size(16.dp)
+                )
+            } else if (dismodEmoji != null) {
+                RemoteImage(
+                    url = dismodEmoji.mediaUrl,
+                    description = dismodEmoji.name,
                     modifier = Modifier.size(16.dp)
                 )
             } else {

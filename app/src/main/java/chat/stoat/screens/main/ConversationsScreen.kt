@@ -333,13 +333,13 @@ fun ConversationsScreen(navController: NavController) {
 
                     when (channel.channelType) {
                         ChannelType.Group -> {
-                            val groupName = channel.name ?: "Group Chat"
+                            val groupName = ChannelUtils.resolveName(channel) ?: "Group Chat"
                             val previewText = when {
                                 lastMessage != null -> {
                                     val authorName = if (lastMessage.author == StoatAPI.selfId) {
                                         "You: "
                                     } else {
-                                        StoatAPI.userCache[lastMessage.author]?.let { User.resolveDefaultName(it) }?.let { "$it: " } ?: ""
+                                        StoatAPI.userCache[lastMessage.author]?.let { chat.stoat.internals.CustomNicknames.resolveName(it) }?.let { "$it: " } ?: ""
                                     }
                                     val content = lastMessage.content?.takeIf { it.isNotBlank() } ?: "Sent an attachment"
                                     "$authorName$content"
@@ -393,7 +393,7 @@ fun ConversationsScreen(navController: NavController) {
                         else -> {
                             val partnerId = ChannelUtils.resolveDMPartner(channel)
                             val partner = partnerId?.let { StoatAPI.userCache[it] }
-                            val partnerName = partner?.let { User.resolveDefaultName(it) }
+                            val partnerName = partner?.let { chat.stoat.internals.CustomNicknames.resolveName(it) }
                                 ?: partner?.username
                                 ?: channel.name
                                 ?: stringResource(R.string.unknown)

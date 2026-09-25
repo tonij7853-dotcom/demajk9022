@@ -47,6 +47,21 @@ object CustomNicknames {
         }
     }
 
+    fun resolveName(userId: String, serverId: String? = null): String {
+        if (serverId != null) {
+            val serverNick = StoatAPI.members.getMember(serverId, userId)?.nickname
+            if (!serverNick.isNullOrBlank()) {
+                return serverNick
+            }
+        }
+        val customNick = getNickname(userId)
+        if (!customNick.isNullOrBlank()) {
+            return customNick
+        }
+        val user = StoatAPI.userCache[userId]
+        return user?.let { User.resolveDefaultName(it) } ?: userId
+    }
+
     fun resolveName(user: User, serverId: String? = null): String {
         if (serverId != null && user.id != null) {
             val serverNick = StoatAPI.members.getMember(serverId, user.id!!)?.nickname

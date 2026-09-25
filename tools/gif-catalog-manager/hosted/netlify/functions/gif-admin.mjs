@@ -221,16 +221,52 @@ function ogImages(html) {
   return [...new Set(results)];
 }
 
+function extractDirectUrl(str) {
+  if (!str) return '';
+  let val = String(str).trim();
+  const nestedMd = val.match(/\[\s*!\[.*?\]\((https?:\/\/[^\s\)]+)\)\s*\]/i);
+  if (nestedMd) return nestedMd[1];
+  const mdImg = val.match(/!\[.*?\]\((https?:\/\/[^\s\)]+)\)/i);
+  if (mdImg) return mdImg[1];
+  const mdLink = val.match(/\[.*?\]\((https?:\/\/[^\s\)]+)\)/i);
+  if (mdLink) {
+    const egg = mdLink[1].match(/emoji\.gg\/emoji\/([0-9]+-[a-z0-9_-]+)/i);
+    if (egg) return `https://cdn3.emoji.gg/emojis/${egg[1]}.gif`;
+    return mdLink[1];
+  }
+  const htmlImg = val.match(/<img\b[^>]*\bsrc=["'](https?:\/\/[^"'\s]+)["']/i);
+  if (htmlImg) return htmlImg[1];
+  const eggPage = val.match(/https?:\/\/emoji\.gg\/emoji\/([0-9]+-[a-z0-9_-]+)/i);
+  if (eggPage) return `https://cdn3.emoji.gg/emojis/${eggPage[1]}.gif`;
+  const anyUrl = val.match(/https?:\/\/[^\s\)\]"'>]+/i);
+  if (anyUrl) {
+    const egg = anyUrl[0].match(/emoji\.gg\/emoji\/([0-9]+-[a-z0-9_-]+)/i);
+    if (egg) return `https://cdn3.emoji.gg/emojis/${egg[1]}.gif`;
+    return anyUrl[0];
+  }
+  return val;
+}
+
 async function imageCandidates(url) {
-  const urlsToTry = [url];
+  const directUrl = extractDirectUrl(url);
+  const urlsToTry = [directUrl];
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(directUrl);
     if (parsed.hostname === 'media.discordapp.net') {
-      const cdnUrl = new URL(url);
+      const cdnUrl = new URL(directUrl);
       cdnUrl.hostname = 'cdn.discordapp.com';
       cdnUrl.searchParams.delete('width');
       cdnUrl.searchParams.delete('height');
       urlsToTry.push(cdnUrl.href);
+    } else if (parsed.hostname.includes('emoji.gg')) {
+      const match = parsed.pathname.match(/\/emojis\/([0-9]+-[a-z0-9_-]+)\.(gif|webp|png)$/i);
+      if (match) {
+        const base = `https://${parsed.hostname}/emojis/${match[1]}`;
+        for (const ext of ['gif', 'webp', 'png']) {
+          const candidate = `${base}.${ext}`;
+          if (!urlsToTry.includes(candidate)) urlsToTry.push(candidate);
+        }
+      }
     }
   } catch { /* Handled in safeFetch */ }
 
@@ -372,6 +408,91 @@ async function readCatalog() {
   return { version: 1, gifs: [] };
 }
 
+async function normalizeEmoji(data) {
+  let input;
+  try {
+    input = sharp(data, { animated: true, limitInputPixels: 50_000_000, failOn: 'none' });
+    const metadata = await input.metadata();
+    if (!['gif', 'webp', 'png', 'jpeg', 'bmp'].includes(metadata.format)) {
+      fail('Use a GIF, WebP, PNG, or JPEG emoji.');
+    }
+    const frames = metadata.pages || 1;
+    const isAnimated = frames > 1;
+
+    let outputData;
+    let format = 'png';
+    let mime = 'image/png';
+
+    if (isAnimated) {
+      outputData = await sharp(data, { animated: true, limitInputPixels: 50_000_000, failOn: 'none' })
+        .resize({ width: 128, height: 128, fit: 'inside', withoutEnlargement: true })
+        .gif({ loop: 0, effort: 4 })
+        .toBuffer();
+      format = 'gif';
+      mime = 'image/gif';
+    } else {
+      outputData = await sharp(data, { failOn: 'none' })
+        .resize({ width: 128, height: 128, fit: 'inside', withoutEnlargement: true })
+        .png({ compressionLevel: 9 })
+        .toBuffer();
+      format = 'png';
+      mime = 'image/png';
+    }
+
+    const sha256 = createHash('sha256').update(outputData).digest('hex');
+    const outWidth = Math.min(metadata.width || 128, 128);
+    const frameHeight = metadata.pageHeight || (frames > 1 ? Math.floor(metadata.height / frames) : metadata.height);
+    const outHeight = Math.min(frameHeight || 128, 128);
+
+    return {
+      data: outputData,
+      format,
+      mime,
+      isAnimated,
+      frames,
+      width: outWidth,
+      height: outHeight,
+      sha256,
+      bytes: outputData.byteLength,
+    };
+  } catch (error) {
+    if (error.status) throw error;
+    fail(error.message || 'Could not parse emoji image.');
+  }
+}
+
+async function readEmojiCatalog() {
+  try {
+    const store = getGifStore();
+    const catalog = await store.get('emojis.json', { type: 'json' });
+    if (catalog && Array.isArray(catalog.emojis)) {
+      let changed = false;
+      for (const emoji of catalog.emojis) {
+        const ext = emoji.format || (emoji.isAnimated ? 'gif' : 'png');
+        const filename = emoji.filename || `emoji-${emoji.shortcode || emoji.id}-${(emoji.sha256 || '').slice(0, 8)}.${ext}`;
+        const expectedMedia = `${SITE_DOMAIN}/api/raw/${filename}`;
+        if (emoji.mediaUrl !== expectedMedia) {
+          emoji.mediaUrl = expectedMedia;
+          emoji.previewUrl = expectedMedia;
+          changed = true;
+        }
+        if (!emoji.filename) {
+          emoji.filename = filename;
+          changed = true;
+        }
+      }
+      if (changed) {
+        await store.setJSON('emojis.json', catalog).catch(() => {});
+      }
+      return catalog;
+    }
+  } catch (error) {
+    console.warn('[gif-studio] Could not read emojis from blob store:', error?.message || error);
+  }
+  return { version: 1, emojis: [] };
+}
+
+
 export default async (request) => {
   try {
     if (request.method === 'OPTIONS') {
@@ -391,15 +512,15 @@ export default async (request) => {
     const segments = cleanPath.split('/').filter(Boolean);
     const action = segments[0] || '';
 
-    // Route: /api/raw/:filename (Public GIF binary delivery)
+    // Route: /api/raw/:filename (Public GIF / Emoji binary delivery)
     if (action === 'raw') {
       if (request.method !== 'GET' && request.method !== 'HEAD') {
         return reply({ error: 'Method not allowed.' }, 405);
       }
       const rawName = segments[1] || url.searchParams.get('file') || '';
       const filename = decodeURIComponent(rawName).trim();
-      if (!filename || !/^[A-Za-z0-9_-]{1,120}\.gif$/i.test(filename)) {
-        return reply({ error: 'Invalid or missing GIF filename.' }, 400);
+      if (!filename || !/^[A-Za-z0-9_-]{1,120}\.(gif|png|webp|jpe?g)$/i.test(filename)) {
+        return reply({ error: 'Invalid or missing media filename.' }, 400);
       }
       try {
         const store = getGifStore();
@@ -428,12 +549,14 @@ export default async (request) => {
         }
 
         if (!data) {
-          return reply({ error: 'GIF not found.' }, 404);
+          return reply({ error: 'Media not found.' }, 404);
         }
+        const ext = filename.split('.').pop().toLowerCase();
+        const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : 'image/gif';
         return new Response(data, {
           status: 200,
           headers: {
-            'Content-Type': 'image/gif',
+            'Content-Type': contentType,
             'Cache-Control': 'public, max-age=31536000, immutable',
             'Access-Control-Allow-Origin': '*',
             'X-Content-Type-Options': 'nosniff',
@@ -441,15 +564,32 @@ export default async (request) => {
         });
       } catch (error) {
         console.error('[gif-studio] Error retrieving raw blob:', error);
-        return reply({ error: 'Failed to retrieve GIF.' }, 500);
+        return reply({ error: 'Failed to retrieve media.' }, 500);
       }
     }
 
     // Route: /api/catalog (Public catalog for app and manager)
     if (request.method === 'GET' && action === 'catalog') {
-      const catalog = await readCatalog();
+      const [catalog, emojiCatalog] = await Promise.all([readCatalog(), readEmojiCatalog()]);
       return Response.json(
-        { gifs: catalog.gifs, pendingPullRequest: null },
+        { gifs: catalog.gifs, emojis: emojiCatalog.emojis, pendingPullRequest: null },
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=120',
+            'Access-Control-Allow-Origin': '*',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        }
+      );
+    }
+
+    // Route: /api/emojis (Public emoji catalog for Dismod app and studio)
+    if (request.method === 'GET' && action === 'emojis') {
+      const emojiCatalog = await readEmojiCatalog();
+      return Response.json(
+        { version: 1, emojis: emojiCatalog.emojis },
         {
           status: 200,
           headers: {
@@ -613,6 +753,128 @@ export default async (request) => {
       await store.setJSON('catalog.json', catalog);
 
       return reply({ ok: true, direct: true, id, title: removed.title });
+    }
+
+    // Route: /api/preview-emoji (Admin preview of source URL / uploaded emoji)
+    if (action === 'preview-emoji') {
+      const sourceUrl = String(payload.url || '').trim();
+      const fileBase64 = String(payload.fileBase64 || '').trim();
+      if (!sourceUrl && !fileBase64) fail('Paste an emoji link or choose a file.');
+
+      let converted;
+      let lastError;
+      if (fileBase64) {
+        if (fileBase64.length > Math.ceil(MAX_SOURCE / 3) * 4 + 8) fail('That file is too large to import.', 413);
+        const data = Buffer.from(fileBase64, 'base64');
+        converted = await normalizeEmoji(data);
+      } else {
+        if (sourceUrl.length > 4096) fail('That link is too long.');
+        for (const candidate of await imageCandidates(sourceUrl)) {
+          try {
+            converted = await normalizeEmoji(candidate.data);
+            break;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+      }
+
+      if (!converted) throw lastError || new Error('No supported emoji image was found.');
+
+      return reply({
+        emojiBase64: converted.data.toString('base64'),
+        sha256: converted.sha256,
+        format: converted.format,
+        mime: converted.mime,
+        isAnimated: converted.isAnimated,
+        frames: converted.frames,
+        width: converted.width,
+        height: converted.height,
+        bytes: converted.bytes,
+      });
+    }
+
+    // Route: /api/publish-emoji (Admin add emoji to Netlify Blobs & emojis.json)
+    if (action === 'publish-emoji') {
+      const shortcodeRaw = String(payload.shortcode || '').trim().replace(/^:+|:+$/g, '');
+      const shortcode = slug(shortcodeRaw) || 'emoji';
+      const name = String(payload.name || payload.title || shortcode).trim().slice(0, 60);
+      const category = String(payload.category || 'Reactions').trim() || 'Reactions';
+      const categoryEmoji = String(payload.categoryEmoji || '✨').trim() || '✨';
+      const sourceUrl = String(payload.sourceUrl || '').trim();
+
+      if (!shortcode) fail('Provide an emoji shortcode (e.g. ordik).');
+      if (payload.rightsConfirmed !== true) fail('Confirm you have permission to share this emoji.');
+
+      const base64 = String(payload.emojiBase64 || '');
+      if (!base64) fail('Preview the emoji before adding.');
+      const data = Buffer.from(base64, 'base64');
+      const sha256 = createHash('sha256').update(data).digest('hex');
+      if (sha256 !== payload.sha256) fail('The preview changed. Check the link again.');
+
+      const isAnimated = payload.isAnimated === true;
+      const format = payload.format === 'gif' || isAnimated ? 'gif' : 'png';
+      const filename = `emoji-${shortcode}-${sha256.slice(0, 8)}.${format}`;
+
+      const store = getGifStore();
+      const catalog = await readEmojiCatalog();
+      if (catalog.emojis.some((e) => e.shortcode === shortcode)) {
+        fail(`An emoji with shortcode :${shortcode}: already exists.`, 409);
+      }
+
+      // Store emoji binary in Netlify Blobs
+      await store.set(filename, data, {
+        metadata: {
+          shortcode,
+          name,
+          category,
+          sha256,
+          isAnimated: String(isAnimated),
+          createdAt: new Date().toISOString(),
+        }
+      });
+
+      const mediaUrl = `${SITE_DOMAIN}/api/raw/${filename}`;
+      const newEmoji = {
+        id: `${shortcode}-${sha256.slice(0, 8)}`,
+        name,
+        shortcode,
+        category,
+        categoryEmoji,
+        filename,
+        format,
+        mediaUrl,
+        previewUrl: mediaUrl,
+        sourceUrl: sourceUrl || undefined,
+        isAnimated,
+        sha256,
+      };
+
+      catalog.emojis.push(newEmoji);
+      await store.setJSON('emojis.json', catalog);
+
+      return reply({
+        ok: true,
+        emoji: newEmoji,
+      });
+    }
+
+    // Route: /api/delete-emoji (Admin delete emoji from catalog)
+    if (action === 'delete-emoji') {
+      const id = String(payload.id || payload.shortcode || '').trim();
+      if (!id) fail('Missing emoji id.');
+      const store = getGifStore();
+      const catalog = await readEmojiCatalog();
+      const index = catalog.emojis.findIndex((e) => e.id === id || e.shortcode === id);
+      if (index < 0) fail('Emoji not found in catalog.', 404);
+
+      const [removed] = catalog.emojis.splice(index, 1);
+      const ext = removed.format || (removed.isAnimated ? 'gif' : 'png');
+      const filename = removed.filename || `emoji-${removed.shortcode || removed.id}-${(removed.sha256 || '').slice(0, 8)}.${ext}`;
+      await store.delete(filename).catch(() => {});
+
+      await store.setJSON('emojis.json', catalog);
+      return reply({ ok: true, id: removed.id, shortcode: removed.shortcode });
     }
 
     return reply({ error: 'Not found.' }, 404);

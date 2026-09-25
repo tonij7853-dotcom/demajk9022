@@ -148,8 +148,8 @@ fun TypingIndicator(
                                 val maybeMember =
                                     serverId?.let { StoatAPI.members.getMember(serverId, userId) }
 
-                                maybeMember?.nickname ?: User.resolveDefaultName(u)
-                            } ?: userId
+                                maybeMember?.nickname ?: chat.stoat.internals.CustomNicknames.resolveName(u, serverId)
+                            } ?: chat.stoat.internals.CustomNicknames.getNickname(userId) ?: userId
                         }
                     ),
                     modifier = Modifier.weight(1f),
