@@ -36,8 +36,15 @@ object LoadedSettings {
             if (it == "Revolt") Theme.Default else Theme.valueOf(it)
         } ?: getDefaultTheme()
         this.messageReplyStyle =
-            settings.android.messageReplyStyle?.let { MessageReplyStyle.valueOf(it) }
-                ?: MessageReplyStyle.SwipeFromEnd
+            settings.android.messageReplyStyle?.let {
+                if (it == "None") MessageReplyStyle.SwipeFromEnd else {
+                    try {
+                        MessageReplyStyle.valueOf(it)
+                    } catch (e: Exception) {
+                        MessageReplyStyle.SwipeFromEnd
+                    }
+                }
+            } ?: MessageReplyStyle.SwipeFromEnd
         this.avatarRadius = settings.android.avatarRadius ?: 50
         this.specialEmbedSettings = settings.android.specialEmbedSettings ?: SpecialEmbedSettings()
         this.font = settings.android.font?.let {

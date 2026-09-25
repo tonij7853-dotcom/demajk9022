@@ -1,52 +1,38 @@
 package chat.stoat.composables.screens.chat.atoms
 
-import android.annotation.SuppressLint
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredHeightIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.pointer.PointerInputChange
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.min
 import chat.stoat.R
-import chat.stoat.api.StoatAPI
 import chat.stoat.api.settings.LoadedSettings
 import chat.stoat.api.settings.MessageReplyStyle
 import chat.stoat.callbacks.Action
@@ -54,16 +40,18 @@ import chat.stoat.callbacks.ActionChannel
 import chat.stoat.composables.chat.Message
 import chat.stoat.core.model.schemas.Channel
 import chat.stoat.core.model.schemas.Message
-import chat.stoat.internals.extensions.supportSwipeReply
 import com.mikepenz.markdown.model.State
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
-const val SWIPE_TO_REPLY_THRESHOLD = -450f
+// Discord Blurple matching Discord's swipe-to-reply button
+private val DiscordBlurple = Color(0xFF5865F2)
 
-// Display a regular message in the LazyColumn of the chat screen.
-@SuppressLint("UnusedBoxWithConstraintsScope") // we do use it, but the IDE is stupid
+/**
+ * Display a regular message in the LazyColumn of the chat screen with Discord-style swipe-to-reply.
+ */
 @Composable
 fun RegularMessage(
     message: Message,
@@ -80,242 +68,208 @@ fun RegularMessage(
     mdAst: State? = null
 ) {
     val haptic = LocalHapticFeedback.current
+    val offsetX = remember { Animatable(0f) }
+    var isActivated by remember { mutableStateOf(false) }
 
-    val offsetXState = remember { mutableFloatStateOf(0f) }
-    var offsetX by offsetXState
-    val animOffsetX by animateFloatAsState(
-        when {
-            drawerIsOpen -> 0f
-            offsetX > -20f -> 0f
-            else -> offsetX
-        },
-        label = "X offset of message for Swipe to Reply"
-    )
-    val markGestureInvalidState = remember { mutableStateOf(false) }
-    var markGestureInvalid by markGestureInvalidState
-    var hapticFeedbackPerformed by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val thresholdPx = remember(density) { with(density) { 64.dp.toPx() } }
+    val maxDragPx = remember(density) { with(density) { 96.dp.toPx() } }
 
-    // Invalidate swipe-to-reply only when a child (e.g. a code block) actually consumed a
-    // horizontal scroll, i.e. it had content to scroll. Non-scrollable code blocks produce
-    // consumed.x == 0 and will not block the swipe gesture.
-    val nestedScrollConnection = remember(offsetXState, markGestureInvalidState) {
-        object : NestedScrollConnection {
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource
-            ): Offset {
-                if (consumed.x != 0f) {
-                    offsetXState.floatValue = 0f
-                    markGestureInvalidState.value = true
-                }
-                return Offset.Zero
-            }
-        }
-    }
-    var messageHeight by remember { mutableIntStateOf(0) }
+    val canReply = message.id != null
+    val swipeEnabled = canReply && LoadedSettings.messageReplyStyle != MessageReplyStyle.None && !drawerIsOpen
 
-    val canReleaseToSend = remember(offsetX) { offsetX <= SWIPE_TO_REPLY_THRESHOLD }
-    val indicatorBackground by animateColorAsState(
-        when {
-            canReleaseToSend -> MaterialTheme.colorScheme.inversePrimary
-            else -> MaterialTheme.colorScheme.primaryContainer
-        },
-        label = "Swipe to Reply indicator background"
-    )
-    val indicatorForeground by animateColorAsState(
-        when {
-            canReleaseToSend -> MaterialTheme.colorScheme.primary
-            else -> MaterialTheme.colorScheme.onPrimaryContainer
-        },
-        label = "Swipe to Reply indicator foreground"
-    )
+    val swipeModifier = if (swipeEnabled) {
+        Modifier.pointerInput(message.id, swipeEnabled) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                var totalX = 0f
+                var totalY = 0f
+                var isDragging = false
+                val touchSlop = viewConfiguration.touchSlop
 
-    var onFingerMoveHandler: (List<PointerInputChange>) -> Unit =
-        { changeList: List<PointerInputChange> ->
-            changeList.firstOrNull()
-                ?.let {
-                    val deltaX = it.position.x - it.previousPosition.x
-                    val deltaY = it.position.y - it.previousPosition.y
+                try {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) break
 
-                    val couldBeTopDownScroll =
-                        deltaX > -30f && abs(deltaY) > 30f && offsetX >= -100f
+                        val deltaX = change.position.x - change.previousPosition.x
+                        val deltaY = change.position.y - change.previousPosition.y
 
-                    if (couldBeTopDownScroll) {
-                        offsetX = 0f
-                        markGestureInvalid = true
-                        return@let
-                    }
+                        if (!isDragging) {
+                            totalX += deltaX
+                            totalY += deltaY
 
-                    val goesTowardsLeft = it.position.x < it.previousPosition.x
-                    if (goesTowardsLeft || offsetX <= -20f) {
-                        if (markGestureInvalid) return@let
+                            // If vertical movement exceeds horizontal movement, let LazyColumn scroll normally
+                            if (abs(totalY) > touchSlop && abs(totalY) > abs(totalX)) {
+                                break
+                            }
 
-                        offsetX += deltaX
-                        setDrawerGestureEnabled(false)
-                    }
+                            // If swiping rightward, let the drawer gesture handle it
+                            if (totalX > touchSlop) {
+                                break
+                            }
 
-                    if (goesTowardsLeft && offsetX <= -30f) {
-                        setDisableScroll(true)
-                    }
+                            // If child already consumed horizontal scroll (e.g. code block), skip
+                            if (change.isConsumed) {
+                                break
+                            }
 
-                    if (goesTowardsLeft && offsetX <= SWIPE_TO_REPLY_THRESHOLD && !hapticFeedbackPerformed) {
-                        hapticFeedbackPerformed = true
-                        haptic.performHapticFeedback(
-                            HapticFeedbackType.GestureThresholdActivate
-                        )
-                    } else if (hapticFeedbackPerformed && offsetX >= -100f) {
-                        hapticFeedbackPerformed = false
-                    }
-                }
-        }
-
-    Box {
-        Message(
-            message = message,
-            onMessageContextMenu = {
-                message.id?.let { messageId ->
-                    showMessageBottomSheet(messageId)
-                }
-            },
-            onAvatarClick = {
-                if (message.webhook != null) {
-                    scope.launch {
-                        ActionChannel.send(Action.OpenWebhookSheet)
-                    }
-                } else {
-                    message.author?.let { author ->
-                        scope.launch {
-                            ActionChannel.send(Action.OpenUserSheet(author, channel?.server))
+                            // Swiping leftward past touch slop
+                            if (totalX < -touchSlop && abs(totalX) > abs(totalY)) {
+                                isDragging = true
+                                setDrawerGestureEnabled(false)
+                                setDisableScroll(true)
+                            }
                         }
-                    }
-                }
-            },
-            onNameClick = {
-                if (message.webhook != null) {
-                    scope.launch {
-                        ActionChannel.send(Action.OpenWebhookSheet)
-                    }
-                } else {
-                    message.author?.let { author ->
-                        scope.launch {
-                            ActionChannel.send(Action.OpenUserSheet(author, channel?.server))
-                        }
-                    }
-                }
-            },
-            canReply = true,
-            onReply = {
-                message.id?.let { messageId ->
-                    scope.launch {
-                        replyToMessage(messageId)
-                    }
-                }
-            },
-            onAddReaction = {
-                message.id?.let { messageId ->
-                    showReactBottomSheet()
-                }
-            },
-            onJumpToMessage = jumpToMessage,
-            fromWebhook = message.webhook != null,
-            webhookName = message.webhook?.name,
-            mdAst = mdAst,
-            modifier = Modifier
-                .offset(
-                    x = with(LocalDensity.current) { animOffsetX.toDp() }
-                )
-                .nestedScroll(nestedScrollConnection)
-                .then(
-                    if (LoadedSettings.messageReplyStyle == MessageReplyStyle.SwipeFromEnd)
-                        Modifier.supportSwipeReply(
-                            onDown = {},
-                            onMove = onFingerMoveHandler,
-                            onUp = {
-                                if (offsetX <= SWIPE_TO_REPLY_THRESHOLD) {
-                                    scope.launch {
-                                        message.id?.let {
-                                            replyToMessage(it)
-                                        }
-                                    }
+
+                        if (isDragging) {
+                            change.consume()
+
+                            // Rubber-band resistance past threshold
+                            val raw = change.position.x - down.position.x
+                            val targetOffset = if (raw < -thresholdPx) {
+                                -thresholdPx - (-raw - thresholdPx) * 0.3f
+                            } else {
+                                raw
+                            }.coerceIn(-maxDragPx, 0f)
+
+                            scope.launch {
+                                offsetX.snapTo(targetOffset)
+                            }
+
+                            val nowActivated = targetOffset <= -thresholdPx
+                            if (nowActivated != isActivated) {
+                                isActivated = nowActivated
+                                if (nowActivated) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
                                 }
-
-                                setDrawerGestureEnabled(true)
-                                markGestureInvalid = false
-                                setDisableScroll(false)
-                                hapticFeedbackPerformed = false
-                                offsetX = 0f
                             }
-                        )
-                    else Modifier
-                )
-                .onSizeChanged {
-                    // FIXME:
-                    // This whole onSizeChanged pattern is, technically a workaround. LazyColumn
-                    // doesn't support the usual idiomatic ways to make an item as tall as the
-                    // tallest item in the row (intrinsic sizing; fill parent etc.)
-                    // This workaround may bite us performance-wise!
-                    if (messageHeight != it.height) messageHeight = it.height
-                }
-        )
-        with(LocalDensity.current) {
-            val msgHeightAsDp = messageHeight.toDp()
-            BoxWithConstraints(Modifier.height(msgHeightAsDp)) {
-                Row(
-                    Modifier
-                        .height(msgHeightAsDp)
-                        .requiredHeightIn(max = msgHeightAsDp) // must not cause message to be taller
-                        .offset(
-                            x = with(LocalDensity.current) {
-                                maxWidth - abs(
-                                    animOffsetX
-                                ).toDp()
+                        }
+                    }
+                } finally {
+                    if (isDragging) {
+                        val shouldTriggerReply = isActivated
+                        isActivated = false
+                        if (shouldTriggerReply) {
+                            message.id?.let { msgId ->
+                                scope.launch {
+                                    replyToMessage(msgId)
+                                }
                             }
-                        )
-                        .background(indicatorBackground)
-                        .fillMaxWidth()
-                        .padding(start = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(
-                        8.dp,
-                        Alignment.Start
-                    )
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_reply_24dp),
-                        contentDescription = null,
-                        modifier = Modifier.size(
-                            min(
-                                msgHeightAsDp - 4.dp,
-                                24.dp
+                        }
+                        scope.launch {
+                            offsetX.animateTo(
+                                0f,
+                                spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMedium
+                                )
                             )
-                        ),
-                        tint = indicatorForeground
-                    )
-                    AnimatedContent(
-                        targetState = canReleaseToSend,
-                        transitionSpec = {
-                            fadeIn(animationSpec = spring()) togetherWith
-                                    fadeOut(animationSpec = spring())
-                        },
-                        label = "Swipe to Reply indicator label"
-                    ) {
-                        Text(
-                            when (it) {
-                                true -> stringResource(
-                                    R.string.swipe_to_reply_release
-                                )
-
-                                else -> stringResource(
-                                    R.string.swipe_to_reply_keep_swiping
-                                )
-                            },
-                            color = indicatorForeground,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        }
+                        setDrawerGestureEnabled(true)
+                        setDisableScroll(false)
                     }
                 }
             }
+        }
+    } else Modifier
+
+    Box(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        // Discord-style Floating Circular Reply Button on the right edge
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 16.dp)
+                .graphicsLayer {
+                    val curr = offsetX.value
+                    if (curr >= -2f) {
+                        alpha = 0f
+                        scaleX = 0.5f
+                        scaleY = 0.5f
+                    } else {
+                        val progress = (abs(curr) / thresholdPx).coerceIn(0f, 1f)
+                        val scale = if (isActivated) 1.15f else (0.6f + 0.4f * progress)
+                        scaleX = scale
+                        scaleY = scale
+                        alpha = (abs(curr) / (thresholdPx * 0.35f)).coerceIn(0f, 1f)
+                        translationX = (curr + thresholdPx).coerceAtLeast(0f) * 0.25f
+                    }
+                }
+                .size(42.dp)
+                .background(
+                    color = if (isActivated) DiscordBlurple else DiscordBlurple.copy(alpha = 0.85f),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_reply_24dp),
+                contentDescription = stringResource(R.string.message_context_sheet_actions_reply),
+                tint = Color.White,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+
+        // Message Content with animated horizontal offset
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                .then(swipeModifier)
+        ) {
+            Message(
+                message = message,
+                onMessageContextMenu = {
+                    message.id?.let { messageId ->
+                        showMessageBottomSheet(messageId)
+                    }
+                },
+                onAvatarClick = {
+                    if (message.webhook != null) {
+                        scope.launch {
+                            ActionChannel.send(Action.OpenWebhookSheet)
+                        }
+                    } else {
+                        message.author?.let { author ->
+                            scope.launch {
+                                ActionChannel.send(Action.OpenUserSheet(author, channel?.server))
+                            }
+                        }
+                    }
+                },
+                onNameClick = {
+                    if (message.webhook != null) {
+                        scope.launch {
+                            ActionChannel.send(Action.OpenWebhookSheet)
+                        }
+                    } else {
+                        message.author?.let { author ->
+                            scope.launch {
+                                ActionChannel.send(Action.OpenUserSheet(author, channel?.server))
+                            }
+                        }
+                    }
+                },
+                canReply = true,
+                onReply = {
+                    message.id?.let { messageId ->
+                        scope.launch {
+                            replyToMessage(messageId)
+                        }
+                    }
+                },
+                onAddReaction = {
+                    message.id?.let {
+                        showReactBottomSheet()
+                    }
+                },
+                onJumpToMessage = jumpToMessage,
+                fromWebhook = message.webhook != null,
+                webhookName = message.webhook?.name,
+                mdAst = mdAst
+            )
         }
     }
 }

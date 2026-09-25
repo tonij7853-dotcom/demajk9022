@@ -35,7 +35,7 @@ object SyncedSettings {
             theme = "None",
             font = "Default",
             colourOverrides = null,
-            messageReplyStyle = "None"
+            messageReplyStyle = "SwipeFromEnd"
         )
     )
     private val _notifications = mutableStateOf(NotificationSettings())
@@ -161,7 +161,7 @@ object SyncedSettings {
             theme = "None",
             font = "Default",
             colourOverrides = null,
-            messageReplyStyle = "None"
+            messageReplyStyle = "SwipeFromEnd"
         )
         _android.value = default
         setKey("android", StoatJson.encodeToString(AndroidSpecificSettings.serializer(), default))
