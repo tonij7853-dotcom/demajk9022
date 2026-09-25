@@ -25,7 +25,7 @@ import kotlinx.coroutines.runBlocking
 
 object ActiveChannelTracker {
     var activeChannelId: String? = null
-    var isAppInForeground: Boolean = true
+    var isAppInForeground: Boolean = false
 }
 
 object DismodNotificationPoster {
@@ -39,10 +39,13 @@ object DismodNotificationPoster {
             // Do not notify for user's own messages
             if (authorId == StoatAPI.selfId) return
 
-            // Do not notify if user is currently looking at this exact channel in foreground
+            // Only suppress notification if user is in foreground AND actively viewing THIS exact channel
             if (ActiveChannelTracker.isAppInForeground && ActiveChannelTracker.activeChannelId == channelId) {
                 return
             }
+
+            // Ensure notification channels are registered
+            ChannelRegistrator(context).register()
 
             // Check if notifications are enabled
             val notificationManager = NotificationManagerCompat.from(context)
@@ -52,16 +55,17 @@ object DismodNotificationPoster {
             val isEnabled = runBlocking { kv.getBoolean("notifications_enabled") } ?: true
             if (!isEnabled) return
 
-            // Resolve author display name
-            val author = StoatAPI.userCache[authorId]
-            val authorName = messageFrame.masquerade?.name
-                ?: author?.let { User.resolveDefaultName(it) }
-                ?: context.getString(R.string.unknown)
-
             // Resolve channel title
             val channel = StoatAPI.channelCache[channelId]
             val isDm = channel?.channelType == ChannelType.DirectMessage
             val isGroup = channel?.channelType == ChannelType.Group
+
+            // Resolve author display name
+            val author = StoatAPI.userCache[authorId]
+            val authorName = messageFrame.masquerade?.name
+                ?: author?.let { chat.stoat.internals.CustomNicknames.resolveName(it, channel?.server) }
+                ?: chat.stoat.internals.CustomNicknames.getNickname(authorId)
+                ?: context.getString(R.string.unknown)
 
             val notificationTitle = when {
                 isDm -> authorName
@@ -155,6 +159,7 @@ object DismodNotificationPoster {
                 .setContentIntent(contentIntent)
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
                 .setAutoCancel(true)
                 .addAction(replyAction)
                 .addAction(markAsReadAction)
@@ -172,6 +177,7 @@ object DismodNotificationPoster {
     fun postFriendRequestNotification(context: Context, frame: UserRelationshipFrame) {
         try {
             if (frame.status != "Incoming") return
+            ChannelRegistrator(context).register()
 
             val notificationManager = NotificationManagerCompat.from(context)
             if (!notificationManager.areNotificationsEnabled()) return

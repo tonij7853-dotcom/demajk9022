@@ -79,6 +79,8 @@ import chat.stoat.api.settings.FeatureFlags
 import chat.stoat.callbacks.Action
 import chat.stoat.callbacks.ActionChannel
 import chat.stoat.composables.chat.UserBadgeRow
+import chat.stoat.api.internals.ResourceLocations
+import chat.stoat.composables.generic.AvatarViewerDialog
 import chat.stoat.composables.generic.NonIdealState
 import chat.stoat.composables.generic.RemoteImage
 import chat.stoat.composables.generic.UserAvatar
@@ -128,6 +130,8 @@ fun UserInfoSheet(
     var showServerIdentityOptions by remember { mutableStateOf(false) }
     var showChangeNicknameDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var showFullAvatar by remember { mutableStateOf(false) }
+    var showFullBanner by remember { mutableStateOf(false) }
 
     var userNote by remember(userId) {
         mutableStateOf("")
@@ -157,7 +161,8 @@ fun UserInfoSheet(
     }
 
     if (showChangeNicknameDialog && user != null) {
-        val currentNick = if (serverId != null) member?.nickname else CustomNicknames.getNickname(user!!.id ?: "")
+        val currentNick = member?.nickname?.takeIf { it.isNotBlank() }
+            ?: CustomNicknames.getNickname(user!!.id ?: "")
         ChangeNicknameDialog(
             userId = user!!.id ?: userId,
             serverId = serverId,
@@ -189,6 +194,33 @@ fun UserInfoSheet(
                 userId = user!!.id!!
             )
         }
+    }
+
+    if (showFullAvatar && user != null) {
+        val fullAvatarUrl = member?.avatar?.let { "$STOAT_FILES/avatars/${it.id}/original" }
+            ?: user?.avatar?.let { "$STOAT_FILES/avatars/${it.id}/original" }
+            ?: ResourceLocations.userAvatarOriginalUrl(user)
+        AvatarViewerDialog(
+            avatarUrl = fullAvatarUrl,
+            username = user!!.username ?: "user",
+            displayName = user!!.displayName,
+            onDismissRequest = { showFullAvatar = false }
+        )
+    }
+
+    if (showFullBanner && profile?.background != null && user != null) {
+        val background = profile!!.background
+        val fullBannerUrl = if (background is AutumnResource && background.id != null) {
+            "$STOAT_FILES/backgrounds/${background.id}/original"
+        } else {
+            "$STOAT_FILES/backgrounds/${if (background is AutumnResource) background.id else null}/${if (background is AutumnResource) background.filename else background}"
+        }
+        AvatarViewerDialog(
+            avatarUrl = fullBannerUrl,
+            username = user!!.username ?: "user",
+            displayName = "${user!!.displayName ?: user!!.username}'s Banner",
+            onDismissRequest = { showFullBanner = false }
+        )
     }
 
     if (isLoadingUser) {
@@ -248,6 +280,13 @@ fun UserInfoSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(130.dp)
+                .then(
+                    if (profile?.background != null) {
+                        Modifier.clickable { showFullBanner = true }
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             val background = profile?.background
             if (background != null) {
@@ -333,6 +372,28 @@ fun UserInfoSheet(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(
+                            text = { Text("View Profile Picture") },
+                            onClick = {
+                                showMenu = false
+                                showFullAvatar = true
+                            },
+                            leadingIcon = {
+                                Icon(painterResource(R.drawable.ic_account_circle_24dp), contentDescription = null)
+                            }
+                        )
+                        if (profile?.background != null) {
+                            DropdownMenuItem(
+                                text = { Text("View Banner") },
+                                onClick = {
+                                    showMenu = false
+                                    showFullBanner = true
+                                },
+                                leadingIcon = {
+                                    Icon(painterResource(R.drawable.ic_photo_library_24dp), contentDescription = null)
+                                }
+                            )
+                        }
+                        DropdownMenuItem(
                             text = { Text(if (serverId != null) "Change Server Nickname" else "Change Nickname") },
                             onClick = {
                                 showMenu = false
@@ -379,10 +440,11 @@ fun UserInfoSheet(
         ) {
             Column {
                 // Gap for avatar overlap
-                Spacer(modifier = Modifier.height(46.dp))
+                Spacer(modifier = Modifier.height(52.dp))
 
                 // Display Name + Edit Nickname Icon + Pronouns
-                val effectiveNickname = if (serverId != null) member?.nickname else CustomNicknames.getNickname(currentUser.id ?: "")
+                val effectiveNickname = member?.nickname?.takeIf { it.isNotBlank() }
+                    ?: CustomNicknames.getNickname(currentUser.id ?: "")
                 val displayName = effectiveNickname
                     ?: currentUser.displayName?.takeIf { it.isNotBlank() }
                     ?: currentUser.username
@@ -640,6 +702,19 @@ fun UserInfoSheet(
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
+
+                        // Edit Nickname icon button
+                        FilledTonalIconButton(
+                            onClick = { showChangeNicknameDialog = true },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_edit_24dp),
+                                contentDescription = "Change Nickname",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     } else {
                         Button(
                             onClick = { showChangeNicknameDialog = true },
@@ -654,7 +729,7 @@ fun UserInfoSheet(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(Modifier.width(6.dp))
-                            Text(if (serverId != null) "Edit Server Nickname" else "Edit Profile", fontWeight = FontWeight.Bold)
+                            Text(if (serverId != null) "Edit Server Nickname" else "Edit Nickname", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -886,19 +961,21 @@ fun UserInfoSheet(
             // Circular Avatar overlapping banner with presence status dot
             Box(
                 modifier = Modifier
-                    .offset(y = (-40).dp)
+                    .offset(y = (-44).dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surface)
+                    .clickable { showFullAvatar = true }
                     .padding(4.dp)
             ) {
                 UserAvatar(
                     username = currentUser.displayName ?: currentUser.username ?: "Unknown",
                     userId = currentUser.id ?: ULID.makeSpecial(0),
                     avatar = currentUser.avatar,
-                    size = 76.dp,
-                    presenceSize = 22.dp,
+                    size = 88.dp,
+                    presenceSize = 24.dp,
                     decorationId = avatarDecoration,
-                    presence = presenceFromStatus(currentUser.status?.presence, currentUser.online ?: false)
+                    presence = presenceFromStatus(currentUser.status?.presence, currentUser.online ?: false),
+                    onClick = { showFullAvatar = true }
                 )
             }
         }

@@ -118,6 +118,11 @@ class HandlerService : FirebaseMessagingService() {
             return
         }
 
+        // Only suppress notification if user is currently inside this exact channel
+        if (ActiveChannelTracker.isAppInForeground && ActiveChannelTracker.activeChannelId == channelId) {
+            return
+        }
+
         val messageId = data["message"] ?: run {
             logcat(LogPriority.ERROR) { "No message ID in message, abort" }
             return

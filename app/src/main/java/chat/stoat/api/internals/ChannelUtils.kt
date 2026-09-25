@@ -2,6 +2,7 @@ package chat.stoat.api.internals
 
 import chat.stoat.api.StoatAPI
 import chat.stoat.core.model.schemas.Channel
+import chat.stoat.core.model.schemas.ChannelType
 import chat.stoat.core.model.schemas.Server
 import chat.stoat.core.model.schemas.User
 
@@ -25,9 +26,19 @@ object ChannelUtils {
         val customNick = partnerId?.let { chat.stoat.internals.CustomNicknames.getNickname(it) }
         if (customNick != null) return customNick
 
+        if (channel.channelType == ChannelType.Group && channel.name == null) {
+            val groupNames = channel.recipients?.filter { it != StoatAPI.selfId }
+                ?.mapNotNull { uid ->
+                    StoatAPI.userCache[uid]?.let { chat.stoat.internals.CustomNicknames.resolveName(it) }
+                        ?: chat.stoat.internals.CustomNicknames.getNickname(uid)
+                }
+                ?.joinToString(", ")
+            if (!groupNames.isNullOrBlank()) return groupNames
+        }
+
         return channel.name
             ?: partnerId?.let { StoatAPI.userCache[it] }?.let {
-                User.resolveDefaultName(it)
+                chat.stoat.internals.CustomNicknames.resolveName(it)
             }
     }
 

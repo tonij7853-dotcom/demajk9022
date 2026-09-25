@@ -87,6 +87,11 @@ import io.ratex.RaTeXView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import chat.stoat.internals.DismodEmojiManager
+import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
@@ -94,6 +99,10 @@ import org.intellij.markdown.parser.MarkdownParser
 import java.util.concurrent.ConcurrentHashMap
 
 private data class MathEntry(val key: String, val latex: String, val displayMode: Boolean)
+private data class InlineEmojiEntry(val key: String, val url: String, val alt: String)
+
+private val MARKDOWN_IMAGE_REGEX = Regex("""!\[(.*?)\]\((.*?)\)""")
+private val DIRECT_EMOJI_URL_REGEX = Regex("""(?<![(\[])https?://(?:cdn\d*\.emoji\.gg/emojis/[^\s\)\]]+|adminofdismod\.netlify\.app/api/raw/emoji-[^\s\)\]]+)""")
 
 private val mathSizeCache = ConcurrentHashMap<Triple<String, Boolean, Float>, Size>()
 
@@ -128,13 +137,55 @@ private fun collectEmoteUlids(node: ASTNode, content: String): List<String> {
     val ulids = mutableListOf<String>()
     node.children.forEach { child ->
         when (child.type) {
-            CUSTOM_EMOTE_ELEMENT_TYPE -> ulids += child.getTextInNode(content).toString()
-                .removeSurrounding(":")
+            CUSTOM_EMOTE_ELEMENT_TYPE -> {
+                val raw = child.getTextInNode(content).toString().removeSurrounding(":")
+                if (raw.isUlid()) {
+                    ulids += raw
+                }
+            }
 
             else -> ulids += collectEmoteUlids(child, content)
         }
     }
     return ulids
+}
+
+private fun collectInlineEmojis(node: ASTNode, content: String): List<InlineEmojiEntry> {
+    val emojis = mutableListOf<InlineEmojiEntry>()
+    node.children.forEach { child ->
+        when (child.type) {
+            CUSTOM_EMOTE_ELEMENT_TYPE -> {
+                val raw = child.getTextInNode(content).toString().removeSurrounding(":")
+                val dismod = DismodEmojiManager.findEmojiByShortcode(raw)
+                if (dismod != null) {
+                    emojis += InlineEmojiEntry("d_emoji:${dismod.shortcode}", dismod.mediaUrl, dismod.name)
+                }
+            }
+
+            MarkdownElementTypes.IMAGE -> {
+                val raw = child.getTextInNode(content).toString()
+                val match = MARKDOWN_IMAGE_REGEX.find(raw)
+                if (match != null) {
+                    val alt = match.groupValues[1]
+                    val url = match.groupValues[2].trim()
+                    val key = "md_img:${url.hashCode()}"
+                    emojis += InlineEmojiEntry(key, url, alt.ifEmpty { "emoji" })
+                }
+            }
+
+            else -> emojis += collectInlineEmojis(child, content)
+        }
+    }
+    return emojis
+}
+
+internal fun preprocessEmojiContent(content: String): String {
+    val withMarkdownImages = DIRECT_EMOJI_URL_REGEX.replace(content) { match ->
+        val url = match.value
+        val name = url.substringAfterLast("/").substringBeforeLast(".").substringAfter("-")
+        "![$name]($url)"
+    }
+    return easyLineBreaks(withMarkdownImages)
 }
 
 // Converts single \n to hard line breaks so chat messages render line by line, while leaving fenced
@@ -180,7 +231,7 @@ fun ChatMarkdown(
     fontSizeMultiplier: Float = 1f,
     modifier: Modifier = Modifier,
 ) {
-    val processed = remember(content) { easyLineBreaks(content) }
+    val processed = remember(content) { preprocessEmojiContent(content) }
     val flavour = remember(processed) { StoatMarkdownFlavour(processed) }
     val markdownState = rememberMarkdownState(
         content = processed,
@@ -220,6 +271,11 @@ fun ChatMarkdown(
     val emoteUlids = remember(state) {
         (state as? State.Success)?.let {
             collectEmoteUlids(it.node, it.content).distinct()
+        } ?: emptyList()
+    }
+    val inlineEmojis = remember(state) {
+        (state as? State.Success)?.let {
+            collectInlineEmojis(it.node, it.content).distinctBy { e -> e.key }
         } ?: emptyList()
     }
     var mathSizes by remember(mathEntries, fontSizePx) {
@@ -267,10 +323,31 @@ fun ChatMarkdown(
         markdownAnnotator { content, child ->
             when (child.type) {
                 CUSTOM_EMOTE_ELEMENT_TYPE -> {
-                    val ulid = child.getTextInNode(content).toString().removeSurrounding(":")
-                    val name = StoatAPI.emojiCache[ulid]?.name ?: ":$ulid:"
-                    appendInlineContent("emote:$ulid", name)
+                    val raw = child.getTextInNode(content).toString().removeSurrounding(":")
+                    if (raw.isUlid()) {
+                        val name = StoatAPI.emojiCache[raw]?.name ?: ":$raw:"
+                        appendInlineContent("emote:$raw", name)
+                    } else {
+                        val dismod = DismodEmojiManager.findEmojiByShortcode(raw)
+                        if (dismod != null) {
+                            appendInlineContent("d_emoji:${dismod.shortcode}", dismod.name)
+                        } else {
+                            append(":$raw:")
+                        }
+                    }
                     true
+                }
+
+                MarkdownElementTypes.IMAGE -> {
+                    val raw = child.getTextInNode(content).toString()
+                    val match = MARKDOWN_IMAGE_REGEX.find(raw)
+                    if (match != null) {
+                        val alt = match.groupValues[1]
+                        val url = match.groupValues[2].trim()
+                        val key = "md_img:${url.hashCode()}"
+                        appendInlineContent(key, alt.ifEmpty { "emoji" })
+                        true
+                    } else false
                 }
 
                 GFMElementTypes.INLINE_MATH -> {
@@ -550,11 +627,57 @@ fun ChatMarkdown(
                                 }
                             })
                     }
+                    inlineEmojis.forEach { emoji ->
+                        val emojiSp = (fontSize.value * 1.4f).coerceIn(20f, 44f).sp
+                        put(
+                            emoji.key, InlineTextContent(
+                                Placeholder(
+                                    width = emojiSp,
+                                    height = emojiSp,
+                                    placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
+                                )
+                            ) { _ ->
+                                with(LocalDensity.current) {
+                                    val emojiDp = emojiSp.toDp()
+                                    RemoteImage(
+                                        url = emoji.url,
+                                        description = emoji.alt,
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier.size(emojiDp)
+                                    )
+                                }
+                            }
+                        )
+                    }
                 }
             ),
             components = markdownComponents(
-                image = {},
-                inlineImage = {},
+                image = { model ->
+                    val raw = model.node.getTextInNode(model.content).toString()
+                    val match = MARKDOWN_IMAGE_REGEX.find(raw)
+                    val url = match?.groupValues?.getOrNull(2)?.trim()
+                    if (url != null) {
+                        RemoteImage(
+                            url = url,
+                            description = "emoji",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                },
+                inlineImage = { model ->
+                    val raw = model.node.getTextInNode(model.content).toString()
+                    val match = MARKDOWN_IMAGE_REGEX.find(raw)
+                    val url = match?.groupValues?.getOrNull(2)?.trim()
+                    if (url != null) {
+                        RemoteImage(
+                            url = url,
+                            description = "emoji",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                },
                 codeBlock = {
                     MarkdownHighlightedCodeBlock(
                         content = it.content,
