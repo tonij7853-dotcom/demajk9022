@@ -177,6 +177,7 @@ import chat.stoat.sheets.ChannelInfoSheet
 import chat.stoat.sheets.GifPickerSheet
 import chat.stoat.sheets.MessageContextSheet
 import chat.stoat.sheets.ReactSheet
+import chat.stoat.sheets.UserInfoSheet
 import chat.stoat.ui.theme.ClaudeTokens
 import com.mikepenz.markdown.model.State
 import com.valentinilk.shimmer.ShimmerBounds
@@ -245,6 +246,13 @@ fun ChannelScreen(
     val resources = LocalResources.current
     val config = LocalConfiguration.current
     var showChatBackgroundSheet by rememberSaveable { mutableStateOf(false) }
+    var profilePreviewUserId by remember { mutableStateOf<String?>(null) }
+    var profilePreviewServerId by remember { mutableStateOf<String?>(null) }
+
+    fun openUserProfilePreview(userId: String, serverId: String?) {
+        profilePreviewUserId = userId
+        profilePreviewServerId = serverId
+    }
 
     DisposableEffect(Unit) {
         val job = scope.launch { viewModel.listenToUiCallbacks() }
@@ -602,6 +610,23 @@ fun ChannelScreen(
     }
     // </editor-fold>
     // <editor-fold desc="Sheets">
+    if (profilePreviewUserId != null) {
+        val profilePreviewSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            sheetState = profilePreviewSheetState,
+            onDismissRequest = { profilePreviewUserId = null }
+        ) {
+            UserInfoSheet(
+                userId = profilePreviewUserId!!,
+                serverId = profilePreviewServerId,
+                dismissSheet = {
+                    profilePreviewSheetState.hide()
+                    profilePreviewUserId = null
+                }
+            )
+        }
+    }
+
     var channelInfoSheetShown by remember { mutableStateOf(false) }
     if (channelInfoSheetShown) {
         val channelInfoSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -752,9 +777,7 @@ fun ChannelScreen(
                         val currentChannel = viewModel.channel
                         if (currentChannel != null && currentChannel.channelType == ChannelType.DirectMessage) {
                             ChannelUtils.resolveDMPartner(currentChannel)?.let { partnerId ->
-                                scope.launch {
-                                    ActionChannel.send(Action.OpenUserSheet(partnerId, null))
-                                }
+                                openUserProfilePreview(partnerId, null)
                             }
                         } else {
                             channelInfoSheetShown = true
@@ -778,9 +801,7 @@ fun ChannelScreen(
                                             avatar = partner?.avatar,
                                             onClick = {
                                                 ChannelUtils.resolveDMPartner(it)?.let { partnerId ->
-                                                    scope.launch {
-                                                        ActionChannel.send(Action.OpenUserSheet(partnerId, null))
-                                                    }
+                                                    openUserProfilePreview(partnerId, null)
                                                 }
                                             }
                                         )
@@ -1143,6 +1164,7 @@ fun ChannelScreen(
                                                         putTextAtCursorPosition = viewModel::putAtCursorPosition,
                                                         replyToMessage = viewModel::addReplyTo,
                                                         jumpToMessage = viewModel::requestJump,
+                                                        onOpenUserProfile = ::openUserProfilePreview,
                                                         scope = scope,
                                                         mdAst = item.mdAst
                                                     )
@@ -1161,16 +1183,12 @@ fun ChannelScreen(
                                                             },
                                                             onAvatarClick = {
                                                                 StoatAPI.selfId?.let { userId ->
-                                                                    scope.launch {
-                                                                        ActionChannel.send(Action.OpenUserSheet(userId, viewModel.channel?.server))
-                                                                    }
+                                                                    openUserProfilePreview(userId, viewModel.channel?.server)
                                                                 }
                                                             },
                                                             onNameClick = {
                                                                 StoatAPI.selfId?.let { userId ->
-                                                                    scope.launch {
-                                                                        ActionChannel.send(Action.OpenUserSheet(userId, viewModel.channel?.server))
-                                                                    }
+                                                                    openUserProfilePreview(userId, viewModel.channel?.server)
                                                                 }
                                                             },
                                                             canReply = false,
@@ -1193,16 +1211,12 @@ fun ChannelScreen(
                                                             onMessageContextMenu = {},
                                                             onAvatarClick = {
                                                                 StoatAPI.selfId?.let { userId ->
-                                                                    scope.launch {
-                                                                        ActionChannel.send(Action.OpenUserSheet(userId, viewModel.channel?.server))
-                                                                    }
+                                                                    openUserProfilePreview(userId, viewModel.channel?.server)
                                                                 }
                                                             },
                                                             onNameClick = {
                                                                 StoatAPI.selfId?.let { userId ->
-                                                                    scope.launch {
-                                                                        ActionChannel.send(Action.OpenUserSheet(userId, viewModel.channel?.server))
-                                                                    }
+                                                                    openUserProfilePreview(userId, viewModel.channel?.server)
                                                                 }
                                                             },
                                                             canReply = false,
