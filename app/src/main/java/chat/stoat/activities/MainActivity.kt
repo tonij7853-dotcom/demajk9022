@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -305,12 +306,22 @@ class MainActivityViewModel(
 class MainActivity : AppCompatActivity() {
     private val viewModel: MainActivityViewModel by viewModel()
 
+    companion object {
+        private var lastUpdateCheckTime = 0L
+    }
+
     // The window can lose its transparent status bar after the activity is re-shown
     // See the other one in DefaultDestinationScreen.kt
     override fun onResume() {
         super.onResume()
         @Suppress("DEPRECATION") // no Compose-side equivalent for this window flag
         window.statusBarColor = Color.Transparent.toArgb()
+
+        val now = System.currentTimeMillis()
+        if (now - lastUpdateCheckTime > 5 * 60 * 1000) { // Check at most once every 5 minutes on resume
+            lastUpdateCheckTime = now
+            DismodUpdater.checkForUpdates(this, lifecycleScope)
+        }
     }
 
     // Same as above for configuration changes (rotation, dark mode, etc.)

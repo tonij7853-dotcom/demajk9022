@@ -74,9 +74,12 @@ object DismodUpdater {
                 Log.d(TAG, "Checking for updates at $updateUrl")
 
                 val updateInfo = withContext(Dispatchers.IO) {
+                    val finalUrl = if (updateUrl.contains("?")) "$updateUrl&t=${System.currentTimeMillis()}" else "$updateUrl?t=${System.currentTimeMillis()}"
                     val request = Request.Builder()
-                        .url(updateUrl)
+                        .url(finalUrl)
                         .header("User-Agent", "DismodAndroid/${BuildConfig.VERSION_NAME}")
+                        .header("Cache-Control", "no-cache, no-store, must-revalidate")
+                        .header("Pragma", "no-cache")
                         .build()
 
                     httpClient.newCall(request).execute().use { response ->
@@ -92,11 +95,9 @@ object DismodUpdater {
                 val prefs = context.getSharedPreferences("dismod_updater", Context.MODE_PRIVATE)
                 val dismissedVersion = prefs.getInt("dismissed_version_code", 0)
 
-                val isNewer = updateInfo != null &&
-                        updateInfo.versionCode > BuildConfig.VERSION_CODE &&
-                        updateInfo.versionName != BuildConfig.VERSION_NAME
+                val isNewer = updateInfo != null && updateInfo.versionCode > BuildConfig.VERSION_CODE
 
-                if (isNewer && updateInfo != null) {
+                if (updateInfo != null && isNewer) {
                     if (!notifyIfNoUpdate && !updateInfo.forceUpdate && updateInfo.versionCode <= dismissedVersion) {
                         Log.d(TAG, "Update ${updateInfo.versionCode} was dismissed previously, skipping auto prompt")
                         _state.value = DismodUpdateState.Idle
