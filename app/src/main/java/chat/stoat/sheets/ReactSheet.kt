@@ -13,7 +13,7 @@ fun ReactSheet(messageId: String, onSelect: (String?) -> Unit) {
         return
     }
 
-    EmojiPicker {
+    EmojiPicker(isReactionPicker = true) {
         onSelect(it.removeSurrounding(":"))
     }
 

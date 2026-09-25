@@ -1,6 +1,7 @@
 package chat.stoat.markdown
 
 import chat.stoat.api.internals.isUlid
+import chat.stoat.internals.DismodEmojiManager
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.parser.sequentialparsers.RangesListBuilder
 import org.intellij.markdown.parser.sequentialparsers.SequentialParser
@@ -33,7 +34,7 @@ class CustomEmoteSequentialParser(private val content: String) : SequentialParse
 
                 if (lookahead.type == MarkdownTokenTypes.COLON) {
                     val innerText = content.substring(openEnd, lookahead.start)
-                    if (innerText.isUlid()) {
+                    if (innerText.isUlid() || DismodEmojiManager.findEmojiByShortcode(innerText) != null) {
                         result.withNode(
                             SequentialParser.Node(
                                 iterator.index..lookahead.index + 1,

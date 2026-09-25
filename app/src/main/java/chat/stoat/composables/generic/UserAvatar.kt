@@ -152,7 +152,7 @@ fun UserAvatar(
     onClick: (() -> Unit)? = null
 ) {
     val density = LocalDensity.current
-    val sizePx = remember(density, size) { with(density) { size.roundToPx() } }
+    val sizePx = remember(density, size) { with(density) { (size.roundToPx() * 2).coerceAtLeast(192) } }
 
     Box(
         modifier = modifier

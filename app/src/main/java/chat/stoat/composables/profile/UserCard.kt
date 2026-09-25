@@ -58,6 +58,7 @@ import chat.stoat.api.internals.ResourceLocations
 import chat.stoat.api.internals.ULID
 import chat.stoat.api.internals.UserQR
 import chat.stoat.core.model.schemas.User
+import chat.stoat.composables.generic.AvatarViewerDialog
 import chat.stoat.composables.generic.UserAvatar
 import chat.stoat.composables.profile.CosmeticEffectOverlay
 import chat.stoat.composables.profile.ProfileCosmeticsStore
@@ -91,6 +92,7 @@ fun UserCard(
         }
     }
 
+    var showFullAvatar by remember { mutableStateOf(false) }
     var palette by remember { mutableStateOf<Palette?>(null) }
     LaunchedEffect(user) {
         val avatarUrl = ResourceLocations.userAvatarUrl(user)
@@ -400,7 +402,8 @@ fun UserCard(
                         avatar = user?.avatar,
                         shape = CircleShape,
                         decorationId = if (isSelf) cosmetics.avatarDecoration else "none",
-                        size = maxWidth / 3
+                        size = maxWidth / 3,
+                        onClick = { showFullAvatar = true }
                     )
                 }
 
@@ -416,5 +419,14 @@ fun UserCard(
                 )
             }
         }
+    }
+
+    if (showFullAvatar && user != null) {
+        AvatarViewerDialog(
+            avatarUrl = ResourceLocations.userAvatarOriginalUrl(user),
+            username = user.username ?: "user",
+            displayName = user.displayName,
+            onDismissRequest = { showFullAvatar = false }
+        )
     }
 }

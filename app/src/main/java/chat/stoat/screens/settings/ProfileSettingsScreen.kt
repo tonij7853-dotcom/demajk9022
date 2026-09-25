@@ -6,6 +6,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
@@ -52,6 +53,11 @@ import chat.stoat.R
 import chat.stoat.api.StoatAPI
 import chat.stoat.api.routes.microservices.autumn.uploadToAutumn
 import chat.stoat.api.routes.user.fetchUserProfile
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.widget.Toast
+import androidx.compose.material3.Button
+import androidx.compose.ui.text.font.FontWeight
 import chat.stoat.api.routes.user.patchSelf
 import chat.stoat.composables.generic.InlineMediaPicker
 import chat.stoat.composables.profile.ProfileCosmeticsSettings
@@ -59,9 +65,14 @@ import chat.stoat.composables.screens.settings.RawUserOverview
 import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.core.model.schemas.Profile
 import io.ktor.http.ContentType
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
 import java.io.File
+import java.io.InputStream
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 class ProfileSettingsScreenViewModel(val context: Application) :
     ViewModel() {
@@ -76,6 +87,11 @@ class ProfileSettingsScreenViewModel(val context: Application) :
     var currentPronouns by mutableStateOf<String?>(null)
     var pendingPronouns by mutableStateOf("")
     var pronounsError by mutableStateOf<String?>(null)
+
+    var pendingPfpUri by mutableStateOf<Uri?>(null)
+    var pendingBannerUri by mutableStateOf<Uri?>(null)
+    var isSavingPfp by mutableStateOf(false)
+    var isSavingBanner by mutableStateOf(false)
 
     init {
         StoatAPI.selfId?.let { self ->
@@ -100,50 +116,147 @@ class ProfileSettingsScreenViewModel(val context: Application) :
 
     }
 
+    private fun prepareImageForUpload(uri: Uri, prefix: String): Pair<File, ContentType> {
+        val inputStreamSupplier: () -> InputStream? = {
+            if (uri.scheme == "http" || uri.scheme == "https") {
+                val client = OkHttpClient()
+                val resp = client.newCall(Request.Builder().url(uri.toString()).build()).execute()
+                if (resp.isSuccessful) resp.body?.byteStream() else null
+            } else {
+                context.contentResolver.openInputStream(uri)
+            }
+        }
+
+        // Check if it's an animated GIF by inspecting first 6 bytes
+        val isGif = try {
+            inputStreamSupplier()?.use { stream ->
+                val header = ByteArray(6)
+                val count = stream.read(header)
+                count >= 6 && header[0] == 'G'.code.toByte() && header[1] == 'I'.code.toByte() &&
+                        header[2] == 'F'.code.toByte() && header[3] == '8'.code.toByte()
+            } ?: false
+        } catch (e: Exception) {
+            false
+        }
+
+        if (isGif) {
+            val filename = "${prefix}_${System.currentTimeMillis()}.gif"
+            val mFile = File(context.cacheDir, filename)
+            mFile.outputStream().use { output ->
+                inputStreamSupplier()?.use { input ->
+                    input.copyTo(output)
+                }
+            }
+            return Pair(mFile, ContentType.Image.GIF)
+        }
+
+        // Check for EXIF orientation on still photos
+        val orientation = try {
+            inputStreamSupplier()?.use { stream ->
+                android.media.ExifInterface(stream).getAttributeInt(
+                    android.media.ExifInterface.TAG_ORIENTATION,
+                    android.media.ExifInterface.ORIENTATION_NORMAL
+                )
+            } ?: android.media.ExifInterface.ORIENTATION_NORMAL
+        } catch (e: Exception) {
+            android.media.ExifInterface.ORIENTATION_NORMAL
+        }
+
+        // Decode without downscaling to get the exact original resolution in 32-bit ARGB_8888
+        val options = BitmapFactory.Options().apply {
+            inScaled = false
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+
+        val rawBitmap = try {
+            inputStreamSupplier()?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, options)
+            }
+        } catch (e: Exception) {
+            null
+        }
+
+        if (rawBitmap == null) {
+            // Fallback: copy raw bytes directly if BitmapFactory doesn't decode
+            val filename = "${prefix}_${System.currentTimeMillis()}.png"
+            val mFile = File(context.cacheDir, filename)
+            mFile.outputStream().use { output ->
+                inputStreamSupplier()?.use { input ->
+                    input.copyTo(output)
+                }
+            }
+            return Pair(mFile, ContentType.Image.PNG)
+        }
+
+        // Apply EXIF rotation if the photo was taken with a camera in portrait/landscape
+        val orientedBitmap = when (orientation) {
+            android.media.ExifInterface.ORIENTATION_ROTATE_90 -> {
+                val matrix = android.graphics.Matrix().apply { postRotate(90f) }
+                Bitmap.createBitmap(rawBitmap, 0, 0, rawBitmap.width, rawBitmap.height, matrix, true)
+            }
+            android.media.ExifInterface.ORIENTATION_ROTATE_180 -> {
+                val matrix = android.graphics.Matrix().apply { postRotate(180f) }
+                Bitmap.createBitmap(rawBitmap, 0, 0, rawBitmap.width, rawBitmap.height, matrix, true)
+            }
+            android.media.ExifInterface.ORIENTATION_ROTATE_270 -> {
+                val matrix = android.graphics.Matrix().apply { postRotate(270f) }
+                Bitmap.createBitmap(rawBitmap, 0, 0, rawBitmap.width, rawBitmap.height, matrix, true)
+            }
+            else -> rawBitmap
+        }
+
+        // Cap max dimension to 4096 to prevent memory crashes while guaranteeing ultra-crisp resolution
+        val maxDim = 4096
+        val processedBitmap = if (orientedBitmap.width > maxDim || orientedBitmap.height > maxDim) {
+            val ratio = maxDim.toFloat() / maxOf(orientedBitmap.width, orientedBitmap.height)
+            val targetW = (orientedBitmap.width * ratio).toInt()
+            val targetH = (orientedBitmap.height * ratio).toInt()
+            Bitmap.createScaledBitmap(orientedBitmap, targetW, targetH, true)
+        } else {
+            orientedBitmap
+        }
+
+        // Try saving as lossless PNG first.
+        // Autumn limits avatar uploads to ~4MB (3,800,000 bytes safe threshold).
+        val filenamePng = "${prefix}_${System.currentTimeMillis()}.png"
+        val filePng = File(context.cacheDir, filenamePng)
+        filePng.outputStream().use { output ->
+            processedBitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+            output.flush()
+        }
+
+        if (filePng.length() <= 3_800_000L) {
+            return Pair(filePng, ContentType.Image.PNG)
+        } else {
+            // If lossless PNG exceeds Autumn's 4MB limit, compress as ultra-high-fidelity 96% JPEG.
+            // Visually lossless, preserves full original resolution, and easily fits within 1-2MB.
+            filePng.delete()
+            val filenameJpg = "${prefix}_${System.currentTimeMillis()}.jpg"
+            val fileJpg = File(context.cacheDir, filenameJpg)
+            fileJpg.outputStream().use { output ->
+                processedBitmap.compress(Bitmap.CompressFormat.JPEG, 96, output)
+                output.flush()
+            }
+            return Pair(fileJpg, ContentType.Image.JPEG)
+        }
+    }
+
     fun saveNewPfp() {
         uploadError = null
 
-        val uri = when (pfpModel) {
+        val uri = pendingPfpUri ?: when (pfpModel) {
             is Uri -> pfpModel as Uri
             is String -> Uri.parse(pfpModel as String)
             else -> return
         }
 
-        val mime = context.contentResolver.getType(uri)
-        val isGif = mime?.contains("gif", ignoreCase = true) == true ||
-                uri.toString().contains(".gif", ignoreCase = true)
-        val isPng = mime?.contains("png", ignoreCase = true) == true ||
-                uri.toString().contains(".png", ignoreCase = true)
-        val isWebp = mime?.contains("webp", ignoreCase = true) == true ||
-                uri.toString().contains(".webp", ignoreCase = true)
-
-        val ext = when {
-            isGif -> ".gif"
-            isPng -> ".png"
-            isWebp -> ".webp"
-            else -> ".jpg"
-        }
-        val contentType = when {
-            isGif -> ContentType.Image.GIF
-            isPng -> ContentType.Image.PNG
-            isWebp -> ContentType("image", "webp")
-            else -> ContentType.Image.JPEG
-        }
-
-        val filename = "avatar_${System.currentTimeMillis()}$ext"
-        val mFile = File(context.cacheDir, filename)
-
-        mFile.outputStream().use { output ->
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                input.copyTo(output)
-            }
-        }
-
-        viewModelScope.launch {
+        isSavingPfp = true
+        viewModelScope.launch(Dispatchers.IO) {
             try {
+                val (mFile, contentType) = prepareImageForUpload(uri, "avatar")
                 val id = uploadToAutumn(
                     mFile,
-                    filename,
+                    mFile.name,
                     "avatars",
                     contentType,
                     onProgress = { soFar, outOf ->
@@ -152,64 +265,43 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                 )
 
                 patchSelf(avatar = id)
+
+                withContext(Dispatchers.Main) {
+                    pfpModel = StoatAPI.userCache[StoatAPI.selfId]?.avatar?.id?.let {
+                        "$STOAT_FILES/avatars/${it}"
+                    }
+                    pendingPfpUri = null
+                    isSavingPfp = false
+                    uploadProgress = 0f
+                    Toast.makeText(context, "Profile picture saved in full quality!", Toast.LENGTH_SHORT).show()
+                }
             } catch (e: Exception) {
-                uploadError = e.message
-                uploadProgress = 0f
-                return@launch
+                withContext(Dispatchers.Main) {
+                    uploadError = e.message
+                    uploadProgress = 0f
+                    isSavingPfp = false
+                    Toast.makeText(context, "Failed to save avatar: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
-
-            pfpModel = StoatAPI.userCache[StoatAPI.selfId]?.avatar?.id?.let {
-                "$STOAT_FILES/avatars/${it}"
-            }
-
-            uploadProgress = 0f
         }
     }
 
     fun saveNewBackground() {
         uploadError = null
 
-        val uri = when (backgroundModel) {
+        val uri = pendingBannerUri ?: when (backgroundModel) {
             is Uri -> backgroundModel as Uri
             is String -> Uri.parse(backgroundModel as String)
             else -> return
         }
 
-        val mime = context.contentResolver.getType(uri)
-        val isGif = mime?.contains("gif", ignoreCase = true) == true ||
-                uri.toString().contains(".gif", ignoreCase = true)
-        val isPng = mime?.contains("png", ignoreCase = true) == true ||
-                uri.toString().contains(".png", ignoreCase = true)
-        val isWebp = mime?.contains("webp", ignoreCase = true) == true ||
-                uri.toString().contains(".webp", ignoreCase = true)
-
-        val ext = when {
-            isGif -> ".gif"
-            isPng -> ".png"
-            isWebp -> ".webp"
-            else -> ".jpg"
-        }
-        val contentType = when {
-            isGif -> ContentType.Image.GIF
-            isPng -> ContentType.Image.PNG
-            isWebp -> ContentType("image", "webp")
-            else -> ContentType.Image.JPEG
-        }
-
-        val filename = "background_${System.currentTimeMillis()}$ext"
-        val mFile = File(context.cacheDir, filename)
-
-        mFile.outputStream().use { output ->
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                input.copyTo(output)
-            }
-        }
-
-        viewModelScope.launch {
+        isSavingBanner = true
+        viewModelScope.launch(Dispatchers.IO) {
             try {
+                val (mFile, contentType) = prepareImageForUpload(uri, "background")
                 val id = uploadToAutumn(
                     mFile,
-                    filename,
+                    mFile.name,
                     "backgrounds",
                     contentType,
                     onProgress = { soFar, outOf ->
@@ -218,37 +310,47 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                 )
 
                 patchSelf(background = id)
+
+                val profile = StoatAPI.selfId?.let { fetchUserProfile(it) }
+                withContext(Dispatchers.Main) {
+                    if (profile != null) {
+                        currentProfile = profile
+                        pendingProfile = profile
+                        backgroundModel = profile.background?.id?.let {
+                            "$STOAT_FILES/backgrounds/${it}"
+                        }
+                    }
+                    pendingBannerUri = null
+                    isSavingBanner = false
+                    uploadProgress = 0f
+                    Toast.makeText(context, "Banner saved in full quality!", Toast.LENGTH_SHORT).show()
+                }
             } catch (e: Exception) {
-                uploadError = e.message
-                uploadProgress = 0f
-                return@launch
-            }
-
-            backgroundModel = StoatAPI.selfId?.let {
-                val profile = fetchUserProfile(it)
-                currentProfile = profile
-                pendingProfile = profile
-
-                profile.background?.id?.let {
-                    "$STOAT_FILES/backgrounds/${it}"
+                withContext(Dispatchers.Main) {
+                    uploadError = e.message
+                    uploadProgress = 0f
+                    isSavingBanner = false
+                    Toast.makeText(context, "Failed to save banner: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
-
-            uploadProgress = 0f
         }
     }
 
     fun removePfp() {
+        pendingPfpUri = null
         viewModelScope.launch {
             patchSelf(remove = listOf("Avatar"))
             pfpModel = null
+            Toast.makeText(context, "Profile picture removed", Toast.LENGTH_SHORT).show()
         }
     }
 
     fun removeBackground() {
+        pendingBannerUri = null
         viewModelScope.launch {
             patchSelf(remove = listOf("ProfileBackground"))
             backgroundModel = null
+            Toast.makeText(context, "Banner removed", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -319,6 +421,26 @@ fun ProfileSettingsScreen(
                         )
                     }
                 },
+                actions = {
+                    if (viewModel.pendingPfpUri != null || viewModel.pendingBannerUri != null) {
+                        TextButton(
+                            onClick = {
+                                if (viewModel.pendingPfpUri != null && !viewModel.isSavingPfp) {
+                                    viewModel.saveNewPfp()
+                                }
+                                if (viewModel.pendingBannerUri != null && !viewModel.isSavingBanner) {
+                                    viewModel.saveNewBackground()
+                                }
+                            }
+                        ) {
+                            Text(
+                                text = "Save All",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
             )
         },
     ) { pv ->
@@ -407,8 +529,8 @@ fun ProfileSettingsScreen(
                                 circular = true,
                                 useAvatarCircularity = true,
                                 onPick = {
+                                    viewModel.pendingPfpUri = it
                                     viewModel.pfpModel = it.toString()
-                                    viewModel.saveNewPfp()
                                 },
                                 canRemove = true,
                                 onRemove = {
@@ -416,17 +538,44 @@ fun ProfileSettingsScreen(
                                 }
                             )
 
-                            OutlinedButton(
-                                onClick = { showGifPickerForAvatar = true },
-                                modifier = Modifier.padding(top = 8.dp)
+                            Row(
+                                modifier = Modifier.padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_photo_library_24dp),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text("Choose GIF", style = MaterialTheme.typography.labelMedium)
+                                Button(
+                                    onClick = { viewModel.saveNewPfp() },
+                                    enabled = (viewModel.pendingPfpUri != null || viewModel.pfpModel != null) && !viewModel.isSavingPfp
+                                ) {
+                                    if (viewModel.isSavingPfp) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Saving...")
+                                    } else {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_check_24dp),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Save Profile Pic")
+                                    }
+                                }
+
+                                OutlinedButton(
+                                    onClick = { showGifPickerForAvatar = true }
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_photo_library_24dp),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Choose GIF", style = MaterialTheme.typography.labelMedium)
+                                }
                             }
                         }
 
@@ -444,8 +593,8 @@ fun ProfileSettingsScreen(
                             InlineMediaPicker(
                                 currentModel = viewModel.backgroundModel,
                                 onPick = {
+                                    viewModel.pendingBannerUri = it
                                     viewModel.backgroundModel = it.toString()
-                                    viewModel.saveNewBackground()
                                 },
                                 canRemove = true,
                                 onRemove = {
@@ -453,17 +602,44 @@ fun ProfileSettingsScreen(
                                 }
                             )
 
-                            OutlinedButton(
-                                onClick = { showGifPickerForBanner = true },
-                                modifier = Modifier.padding(top = 8.dp)
+                            Row(
+                                modifier = Modifier.padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_photo_library_24dp),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text("Choose GIF Banner", style = MaterialTheme.typography.labelMedium)
+                                Button(
+                                    onClick = { viewModel.saveNewBackground() },
+                                    enabled = (viewModel.pendingBannerUri != null || viewModel.backgroundModel != null) && !viewModel.isSavingBanner
+                                ) {
+                                    if (viewModel.isSavingBanner) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Saving...")
+                                    } else {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_check_24dp),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Save Banner")
+                                    }
+                                }
+
+                                OutlinedButton(
+                                    onClick = { showGifPickerForBanner = true }
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_photo_library_24dp),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Choose GIF Banner", style = MaterialTheme.typography.labelMedium)
+                                }
                             }
                         }
                     }

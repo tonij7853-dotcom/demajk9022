@@ -60,8 +60,8 @@ fun RemoteImage(
         transition = if (useTransition && overrideSize == 0) CrossFade else null,
         requestBuilderTransform = { rb ->
             rb.diskCacheStrategy(DiskCacheStrategy.DATA)
-                .downsample(DownsampleStrategy.AT_MOST)
-                .format(DecodeFormat.PREFER_RGB_565)
+                .downsample(DownsampleStrategy.FIT_CENTER)
+                .format(DecodeFormat.PREFER_ARGB_8888)
                 .set(GifOptions.DISABLE_ANIMATION, !shouldAnimate)
             if (ow > 0 && oh > 0) {
                 rb.override(ow, oh)
