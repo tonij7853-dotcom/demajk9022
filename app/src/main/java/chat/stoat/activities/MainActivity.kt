@@ -223,6 +223,10 @@ class MainActivityViewModel(
             }
 
             val id = kvStorage.get("sessionId") ?: ""
+            val selfId = kvStorage.get("selfId")
+            if (!selfId.isNullOrEmpty()) {
+                StoatAPI.selfId = selfId
+            }
 
             // FAST STARTUP: Set session headers immediately and navigate to main without delay
             StoatAPI.setSessionHeader(token)

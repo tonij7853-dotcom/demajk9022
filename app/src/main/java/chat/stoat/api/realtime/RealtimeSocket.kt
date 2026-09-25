@@ -193,6 +193,7 @@ object RealtimeSocket {
                 Log.d("RealtimeSocket", "Adding users to cache.")
                 val userMap = readyFrame.users.associateBy { it.id!! }
                 StoatAPI.userCache.putAll(userMap)
+                StoatAPI.saveUsersToDisk()
 
                 Log.d("RealtimeSocket", "Adding servers to cache.")
                 val serverMap = readyFrame.servers.associateBy { it.id!! }
@@ -491,6 +492,7 @@ object RealtimeSocket {
                 }
 
                 StoatAPI.userCache[userUpdateFrame.id] = updated
+                StoatAPI.saveUsersToDisk()
             }
 
             "UserRelationship" -> {
@@ -517,6 +519,7 @@ object RealtimeSocket {
                     StoatApplication.instance,
                     userRelationshipFrame
                 )
+                StoatAPI.saveUsersToDisk()
             }
 
             "ChannelUpdate" -> {

@@ -1,5 +1,6 @@
 package chat.stoat.api.settings
 
+import android.content.Context
 import androidx.compose.runtime.mutableStateOf
 import chat.stoat.api.StoatAPI
 import chat.stoat.api.StoatJson
@@ -50,6 +51,23 @@ object SyncedSettings {
     val releaseNotes: ReleaseNotesSettings
         get() = _releaseNotes.value
 
+    private const val PREFS_NAME = "dismod_synced_android"
+
+    fun initFromStorage(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = prefs.getString("android_settings", null) ?: return
+        try {
+            _android.value = StoatJson.decodeFromString(AndroidSpecificSettings.serializer(), json)
+        } catch (_: Exception) {}
+    }
+
+    private fun saveAndroidLocally(value: AndroidSpecificSettings) {
+        val ctx = runCatching { chat.stoat.StoatApplication.instance }.getOrNull() ?: return
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = StoatJson.encodeToString(AndroidSpecificSettings.serializer(), value)
+        prefs.edit().putString("android_settings", json).apply()
+    }
+
     suspend fun fetch(apiToken: String = StoatAPI.sessionToken) {
         try {
             val settings =
@@ -73,6 +91,7 @@ object SyncedSettings {
                         AndroidSpecificSettings.serializer(),
                         it.value
                     )
+                    saveAndroidLocally(_android.value)
                 } catch (e: Exception) {
                     LoadedSettings.poorlyFormedSettingsKeys += "android"
                     e.printStackTrace()
@@ -137,6 +156,7 @@ object SyncedSettings {
 
     suspend fun updateAndroid(value: AndroidSpecificSettings) {
         _android.value = value
+        saveAndroidLocally(value)
         setKey("android", StoatJson.encodeToString(AndroidSpecificSettings.serializer(), value))
     }
 

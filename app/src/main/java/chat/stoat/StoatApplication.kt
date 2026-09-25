@@ -32,6 +32,8 @@ class StoatApplication : Application(), SingletonImageLoader.Factory {
         }
 
         instance = this
+        chat.stoat.api.settings.LoadedSettings.initFromStorage(this)
+        chat.stoat.api.settings.SyncedSettings.initFromStorage(this)
         chat.stoat.c2dm.ChannelRegistrator(this).register()
         chat.stoat.internals.CustomNicknames.init(this)
 
