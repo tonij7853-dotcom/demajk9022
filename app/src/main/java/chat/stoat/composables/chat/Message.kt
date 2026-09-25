@@ -264,43 +264,33 @@ fun Message(
             viewUrlInBrowser(context, url)
         }
     }
-    var kv by remember { mutableStateOf<KVStorage?>(null) }
     var showUsernameDiscriminator by remember { mutableStateOf(false) }
     var ignoreServerAvatar by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        if (Experiments.enableServerIdentityOptions.isEnabled) {
-            val userId = author.id ?: return@LaunchedEffect
-            kv = KVStorage(context)
-            kv?.let {
+    if (Experiments.enableServerIdentityOptions.isEnabled) {
+        val userId = author.id
+        if (userId != null) {
+            LaunchedEffect(userId) {
+                val kv = KVStorage(context)
                 showUsernameDiscriminator =
-                    it.getBoolean("exp/serverIdentityOptions/$userId/showUsernameDiscriminator") == true
+                    kv.getBoolean("exp/serverIdentityOptions/$userId/showUsernameDiscriminator") == true
                 ignoreServerAvatar =
-                    it.getBoolean("exp/serverIdentityOptions/$userId/ignoreServerAvatar") == true
+                    kv.getBoolean("exp/serverIdentityOptions/$userId/ignoreServerAvatar") == true
             }
         }
     }
 
-    val attachmentView = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult(),
-        onResult = {
-            // do nothing
-        }
-    )
-
     val authorIsBlocked = remember(author) { author.relationship == "Blocked" }
 
-    var mentionsSelfRole by remember(message) { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
+    val mentionsSelfRole = remember(message.id, message.content, message.channel) {
         val serverId =
-            StoatAPI.channelCache[message.channel]?.server ?: return@LaunchedEffect
-        var selfMember = StoatAPI.selfId?.let { StoatAPI.members.getMember(serverId, it) }
-            ?: return@LaunchedEffect
-        var messageRoleMentions = MessageProcessor.findMentionedRoleIDs(message.content)
-
-        mentionsSelfRole = selfMember.roles?.any { it in messageRoleMentions } == true
+            StoatAPI.channelCache[message.channel]?.server ?: return@remember false
+        val selfId = StoatAPI.selfId ?: return@remember false
+        val selfMember = StoatAPI.members.getMember(serverId, selfId) ?: return@remember false
+        val messageRoleMentions = MessageProcessor.findMentionedRoleIDs(message.content)
+        selfMember.roles?.any { it in messageRoleMentions } == true
     }
 
-    Column(modifier.animateContentSize()) {
+    Column(modifier) {
         if (message.tail == false) {
             Spacer(modifier = Modifier.height(14.dp))
         } else {
@@ -535,7 +525,7 @@ fun Message(
                                 MessageAttachment(attachment) {
                                     when (attachment.metadata?.type) {
                                         "Image" -> {
-                                            attachmentView.launch(
+                                            context.startActivity(
                                                 Intent(
                                                     context,
                                                     ImageViewActivity::class.java
@@ -546,7 +536,7 @@ fun Message(
                                         }
 
                                         "Video" -> {
-                                            attachmentView.launch(
+                                            context.startActivity(
                                                 Intent(
                                                     context,
                                                     VideoViewActivity::class.java

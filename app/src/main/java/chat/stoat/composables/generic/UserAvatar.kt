@@ -12,6 +12,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -23,6 +24,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -148,6 +150,9 @@ fun UserAvatar(
     onLongClick: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
+    val density = LocalDensity.current
+    val sizePx = remember(density, size) { with(density) { size.roundToPx() } }
+
     Box(
         modifier = modifier
             .size(size),
@@ -159,6 +164,8 @@ fun UserAvatar(
                 contentScale = ContentScale.Crop,
                 description = stringResource(id = R.string.avatar_alt, username),
                 allowAnimation = allowAnimation,
+                overrideSize = sizePx,
+                useTransition = false,
                 modifier = Modifier
                     .clip(shape)
                     .size(size)
@@ -186,6 +193,8 @@ fun UserAvatar(
                 url = "$STOAT_BASE/users/${userId.ifBlank { "0".repeat(26) }}/default_avatar",
                 description = stringResource(id = R.string.avatar_alt, username),
                 allowAnimation = allowAnimation,
+                overrideSize = sizePx,
+                useTransition = false,
                 modifier = Modifier
                     .clip(shape)
                     .size(size)

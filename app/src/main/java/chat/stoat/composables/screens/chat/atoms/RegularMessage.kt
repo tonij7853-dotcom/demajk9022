@@ -178,18 +178,14 @@ fun RegularMessage(
     Box(
         modifier = Modifier.fillMaxWidth()
     ) {
-        // Discord-style Floating Circular Reply Button on the right edge
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 16.dp)
-                .graphicsLayer {
-                    val curr = offsetX.value
-                    if (curr >= -2f) {
-                        alpha = 0f
-                        scaleX = 0.5f
-                        scaleY = 0.5f
-                    } else {
+        // Discord-style Floating Circular Reply Button on the right edge (only composed when actively swiping)
+        if (offsetX.value < -2f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 16.dp)
+                    .graphicsLayer {
+                        val curr = offsetX.value
                         val progress = (abs(curr) / thresholdPx).coerceIn(0f, 1f)
                         val scale = if (isActivated) 1.15f else (0.6f + 0.4f * progress)
                         scaleX = scale
@@ -197,20 +193,20 @@ fun RegularMessage(
                         alpha = (abs(curr) / (thresholdPx * 0.35f)).coerceIn(0f, 1f)
                         translationX = (curr + thresholdPx).coerceAtLeast(0f) * 0.25f
                     }
-                }
-                .size(42.dp)
-                .background(
-                    color = if (isActivated) DiscordBlurple else DiscordBlurple.copy(alpha = 0.85f),
-                    shape = CircleShape
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_reply_24dp),
-                contentDescription = stringResource(R.string.message_context_sheet_actions_reply),
-                tint = Color.White,
-                modifier = Modifier.size(22.dp)
-            )
+                    .size(42.dp)
+                    .background(
+                        color = if (isActivated) DiscordBlurple else DiscordBlurple.copy(alpha = 0.85f),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_reply_24dp),
+                    contentDescription = stringResource(R.string.message_context_sheet_actions_reply),
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
 
         // Message Content with animated horizontal offset

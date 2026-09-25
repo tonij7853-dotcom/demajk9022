@@ -1050,15 +1050,12 @@ fun ChannelScreen(
                                 }
                             }
 
-                            CompositionLocalProvider(
-                                LocalAllowGifAnimation provides !lazyListState.isScrollInProgress
+                            LazyColumn(
+                                state = lazyListState,
+                                userScrollEnabled = !disableScroll,
+                                reverseLayout = true,
+                                contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp)
                             ) {
-                                LazyColumn(
-                                    state = lazyListState,
-                                    userScrollEnabled = !disableScroll,
-                                    reverseLayout = true,
-                                    contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp)
-                                ) {
                                 if (showBottomAnchor) {
                                     // Hack - Too bad!
                                     item(key = "guaranteed_first") {
@@ -1070,16 +1067,16 @@ fun ChannelScreen(
                                     viewModel.items.size,
                                     key = { index ->
                                         if (index < 0 || index >= viewModel.items.size) {
-                                            return@items index
+                                            return@items "idx_$index"
                                         }
                                         when (val item = viewModel.items[index]) {
-                                            is ChannelScreenItem.RegularMessage -> item.message.id!!
-                                            is ChannelScreenItem.ProspectiveMessage -> item.message.id!!
-                                            is ChannelScreenItem.FailedMessage -> item.message.id!!
-                                            is ChannelScreenItem.SystemMessage -> item.message.id!!
-                                            is ChannelScreenItem.DateDivider -> item.instant.toEpochMilliseconds()
-                                            is ChannelScreenItem.LoadTrigger -> index
-                                            is ChannelScreenItem.Loading -> index
+                                            is ChannelScreenItem.RegularMessage -> item.message.id ?: "reg_$index"
+                                            is ChannelScreenItem.ProspectiveMessage -> item.message.id ?: "pro_$index"
+                                            is ChannelScreenItem.FailedMessage -> item.message.id ?: "fail_$index"
+                                            is ChannelScreenItem.SystemMessage -> item.message.id ?: "sys_$index"
+                                            is ChannelScreenItem.DateDivider -> "date_${item.instant.toEpochMilliseconds()}"
+                                            is ChannelScreenItem.LoadTrigger -> "trigger_${item.after}_${item.before}"
+                                            is ChannelScreenItem.Loading -> "loading_$index"
                                         }
                                     },
                                     contentType = { index ->
@@ -1102,20 +1099,21 @@ fun ChannelScreen(
                                     val item = viewModel.items[index]
                                     val messageId = item.messageIdOrNull()
                                     val isHighlighted =
-                                        highlightedMessageId?.let { it == messageId } == true
-                                    val highlightColor by animateColorAsState(
-                                        targetValue = if (isHighlighted) {
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                                        } else {
-                                            Color.Transparent
-                                        },
-                                        animationSpec = tween(durationMillis = 500),
-                                        label = "messageJumpHighlight",
-                                    )
+                                        highlightedMessageId != null && highlightedMessageId == messageId
+                                    val highlightModifier = if (isHighlighted) {
+                                        val highlightColor by animateColorAsState(
+                                            targetValue = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                            animationSpec = tween(durationMillis = 500),
+                                            label = "messageJumpHighlight",
+                                        )
+                                        Modifier.background(highlightColor)
+                                    } else {
+                                        Modifier
+                                    }
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .background(highlightColor)
+                                            .then(highlightModifier)
                                     ) {
                                         when (item) {
                                             is ChannelScreenItem.RegularMessage -> {
@@ -1401,7 +1399,6 @@ fun ChannelScreen(
                                         }
                                     }
                                 }
-                            }
                         }
                     }
 
