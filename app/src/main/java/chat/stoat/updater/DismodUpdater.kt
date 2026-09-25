@@ -132,7 +132,12 @@ object DismodUpdater {
 
                 val apkFile = withContext(Dispatchers.IO) {
                     val cacheFolder = context.externalCacheDir ?: context.cacheDir
-                    val updatesDir = File(cacheFolder, "updates").apply { mkdirs() }
+                    val updatesDir = File(cacheFolder, "updates").apply {
+                        mkdirs()
+                        listFiles()?.forEach { file ->
+                            if (file.name.endsWith(".apk")) file.delete()
+                        }
+                    }
                     val targetFile = File(updatesDir, "dismod-update-${info.versionCode}.apk")
 
                     val request = Request.Builder().url(info.apkUrl).build()
