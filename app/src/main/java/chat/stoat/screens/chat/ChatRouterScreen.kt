@@ -674,7 +674,7 @@ fun ChatRouterScreen(
     }
 
     if (showUserContextSheet) {
-        val userContextSheetState = rememberModalBottomSheetState()
+        val userContextSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
         ModalBottomSheet(
             sheetState = userContextSheetState,

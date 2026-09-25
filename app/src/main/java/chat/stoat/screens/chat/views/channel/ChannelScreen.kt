@@ -1152,8 +1152,20 @@ fun ChannelScreen(
                                                         onMessageContextMenu = {
                                                             // TODO Context menu that allows you to cancel send
                                                         },
-                                                        onAvatarClick = {},
-                                                        onNameClick = {},
+                                                        onAvatarClick = {
+                                                            StoatAPI.selfId?.let { userId ->
+                                                                scope.launch {
+                                                                    ActionChannel.send(Action.OpenUserSheet(userId, viewModel.channel?.server))
+                                                                }
+                                                            }
+                                                        },
+                                                        onNameClick = {
+                                                            StoatAPI.selfId?.let { userId ->
+                                                                scope.launch {
+                                                                    ActionChannel.send(Action.OpenUserSheet(userId, viewModel.channel?.server))
+                                                                }
+                                                            }
+                                                        },
                                                         canReply = false,
                                                         onReply = {},
                                                         onAddReaction = {},
@@ -1168,8 +1180,20 @@ fun ChannelScreen(
                                                         Message(
                                                             message = item.message,
                                                             onMessageContextMenu = {},
-                                                            onAvatarClick = {},
-                                                            onNameClick = {},
+                                                            onAvatarClick = {
+                                                                StoatAPI.selfId?.let { userId ->
+                                                                    scope.launch {
+                                                                        ActionChannel.send(Action.OpenUserSheet(userId, viewModel.channel?.server))
+                                                                    }
+                                                                }
+                                                            },
+                                                            onNameClick = {
+                                                                StoatAPI.selfId?.let { userId ->
+                                                                    scope.launch {
+                                                                        ActionChannel.send(Action.OpenUserSheet(userId, viewModel.channel?.server))
+                                                                    }
+                                                                }
+                                                            },
                                                             canReply = false,
                                                             onReply = {},
                                                             onAddReaction = {},
