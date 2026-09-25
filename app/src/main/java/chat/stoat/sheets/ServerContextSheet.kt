@@ -47,8 +47,11 @@ import chat.stoat.composables.generic.SheetButton
 import chat.stoat.composables.markdown.prose.ChatMarkdown
 import chat.stoat.composables.screens.settings.ServerOverview
 import chat.stoat.composables.sheets.SheetSelection
+import chat.stoat.callbacks.Action
+import chat.stoat.callbacks.ActionChannel
 import chat.stoat.core.model.data.STOAT_WEB_APP
 import chat.stoat.internals.Platform
+import chat.stoat.screens.chat.dialogs.CreateChannelDialog
 import kotlinx.coroutines.launch
 
 @Composable
@@ -76,6 +79,25 @@ fun ServerContextSheet(
 
     var showLeaveConfirmation by remember { mutableStateOf(false) }
     var leaveSilently by remember { mutableStateOf(false) }
+    var showCreateChannelDialog by remember { mutableStateOf(false) }
+
+    if (showCreateChannelDialog) {
+        CreateChannelDialog(
+            serverId = serverId,
+            onDismissRequest = { showCreateChannelDialog = false },
+            onChannelCreated = { newChannel ->
+                showCreateChannelDialog = false
+                coroutineScope.launch {
+                    onHideSheet()
+                }
+                newChannel.id?.let { chId ->
+                    coroutineScope.launch {
+                        ActionChannel.send(Action.SwitchChannel(chId))
+                    }
+                }
+            }
+        )
+    }
 
     if (showLeaveConfirmation) {
         AlertDialog(
@@ -200,6 +222,21 @@ fun ServerContextSheet(
                     }
                 }
             }
+
+            SheetButton(
+                leadingContent = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_add_24dp),
+                        contentDescription = null
+                    )
+                },
+                headlineContent = {
+                    Text("Create Channel")
+                },
+                onClick = {
+                    showCreateChannelDialog = true
+                }
+            )
 
             HorizontalDivider()
         }

@@ -13,6 +13,14 @@ import com.bumptech.glide.integration.compose.CrossFade
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
 
+import androidx.compose.runtime.compositionLocalOf
+import com.bumptech.glide.load.DecodeFormat
+import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.load.resource.gif.GifOptions
+import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
+
+val LocalAllowGifAnimation = compositionLocalOf { true }
+
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun RemoteImage(
@@ -22,9 +30,13 @@ fun RemoteImage(
     contentScale: ContentScale = ContentScale.Crop,
     width: Int = 0,
     height: Int = 0,
-    allowAnimation: Boolean = true
+    overrideSize: Int = 0,
+    allowAnimation: Boolean = true,
+    useTransition: Boolean = true
 ) {
     val context = LocalContext.current
+    val ambientAnimation = LocalAllowGifAnimation.current
+    val shouldAnimate = allowAnimation && ambientAnimation
 
     fun pxAsDp(px: Int): Dp {
         return (
@@ -35,6 +47,9 @@ fun RemoteImage(
                 ).dp
     }
 
+    val ow = if (overrideSize > 0) overrideSize else width
+    val oh = if (overrideSize > 0) overrideSize else height
+
     GlideImage(
         model = url,
         contentDescription = description,
@@ -42,9 +57,16 @@ fun RemoteImage(
         modifier = modifier
             .then(if (width > 0) Modifier.width(pxAsDp(width)) else Modifier)
             .then(if (height > 0) Modifier.height(pxAsDp(height)) else Modifier),
-        transition = CrossFade,
+        transition = if (useTransition && overrideSize == 0) CrossFade else null,
         requestBuilderTransform = { rb ->
-            if (!allowAnimation) rb.dontAnimate() else rb
+            rb.diskCacheStrategy(DiskCacheStrategy.DATA)
+                .downsample(DownsampleStrategy.AT_MOST)
+                .format(DecodeFormat.PREFER_RGB_565)
+                .set(GifOptions.DISABLE_ANIMATION, !shouldAnimate)
+            if (ow > 0 && oh > 0) {
+                rb.override(ow, oh)
+            }
+            if (!shouldAnimate) rb.dontAnimate() else rb
         }
     )
 }

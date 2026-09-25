@@ -4,13 +4,16 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,6 +25,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -30,6 +34,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import chat.stoat.R
 import chat.stoat.api.settings.LoadedSettings
+import chat.stoat.composables.profile.AvatarDecoration
 import chat.stoat.core.model.data.STOAT_BASE
 import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.core.model.schemas.AutumnResource
@@ -142,12 +147,26 @@ fun UserAvatar(
     presenceSize: Dp = 16.dp,
     shape: Shape = RoundedCornerShape(LoadedSettings.avatarRadius),
     allowAnimation: Boolean = true,
+    decorationId: String = "none",
     onLongClick: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
+    val density = LocalDensity.current
+    val sizePx = remember(density, size) { with(density) { size.roundToPx() } }
+
     Box(
         modifier = modifier
-            .size(size),
+            .size(size)
+            .then(
+                if (onClick != null || onLongClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = { onClick?.invoke() },
+                        onLongClick = { onLongClick?.invoke() }
+                    )
+                } else {
+                    Modifier
+                }
+            ),
         contentAlignment = Alignment.BottomEnd
     ) {
         if (avatar != null) {
@@ -156,23 +175,14 @@ fun UserAvatar(
                 contentScale = ContentScale.Crop,
                 description = stringResource(id = R.string.avatar_alt, username),
                 allowAnimation = allowAnimation,
+                overrideSize = sizePx,
+                useTransition = false,
                 modifier = Modifier
                     .clip(shape)
                     .size(size)
                     .then(
                         if (presence != null) {
                             Modifier.bottomEndCircleCutout(presenceSize)
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .then(
-                        if (onLongClick != null || onClick != null) {
-                            Modifier
-                                .combinedClickable(
-                                    onClick = { onClick?.invoke() },
-                                    onLongClick = { onLongClick?.invoke() }
-                                )
                         } else {
                             Modifier
                         }
@@ -183,6 +193,8 @@ fun UserAvatar(
                 url = "$STOAT_BASE/users/${userId.ifBlank { "0".repeat(26) }}/default_avatar",
                 description = stringResource(id = R.string.avatar_alt, username),
                 allowAnimation = allowAnimation,
+                overrideSize = sizePx,
+                useTransition = false,
                 modifier = Modifier
                     .clip(shape)
                     .size(size)
@@ -193,19 +205,10 @@ fun UserAvatar(
                             Modifier
                         }
                     )
-                    .then(
-                        if (onLongClick != null || onClick != null) {
-                            Modifier
-                                .combinedClickable(
-                                    onClick = { onClick?.invoke() },
-                                    onLongClick = { onLongClick?.invoke() }
-                                )
-                        } else {
-                            Modifier
-                        }
-                    )
             )
         }
+
+        AvatarDecoration(decorationId, Modifier.fillMaxSize())
 
         if (presence != null) {
             PresenceBadge(presence, size = presenceSize)

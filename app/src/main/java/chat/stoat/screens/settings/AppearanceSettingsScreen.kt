@@ -97,6 +97,7 @@ class AppearanceSettingsScreenViewModel(val context: Application) : ViewModel() 
 
     fun saveNewTheme(theme: Theme) {
         LoadedSettings.theme = theme
+        LoadedSettings.saveToStorage(context)
         viewModelScope.launch {
             SyncedSettings.updateAndroid(SyncedSettings.android.copy(theme = theme.name))
         }
@@ -104,6 +105,7 @@ class AppearanceSettingsScreenViewModel(val context: Application) : ViewModel() 
 
     fun saveNewFont(font: UserInterfaceFont) {
         LoadedSettings.font = font
+        LoadedSettings.saveToStorage(context)
         viewModelScope.launch {
             SyncedSettings.updateAndroid(SyncedSettings.android.copy(font = font.name))
         }
@@ -111,6 +113,7 @@ class AppearanceSettingsScreenViewModel(val context: Application) : ViewModel() 
 
     fun saveNewAvatarRadius(radius: Int) {
         LoadedSettings.avatarRadius = radius
+        LoadedSettings.saveToStorage(context)
         viewModelScope.launch {
             SyncedSettings.updateAndroid(SyncedSettings.android.copy(avatarRadius = radius))
         }

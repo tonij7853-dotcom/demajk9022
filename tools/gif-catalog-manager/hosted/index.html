@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="Admin-only GIF catalog manager for Dismod." />
+    <title>Dismod GIF Studio</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Dismod GIF Studio">
+          <span class="brand-mark">D</span><span>Dismod <span class="muted">GIF Studio</span></span>
+        </a>
+        <div class="session"><span id="account-label">Admin access required</span><button id="logout" class="button quiet" hidden>Sign out</button></div>
+      </header>
+
+      <section id="login-panel" class="login-panel panel">
+        <p class="eyebrow">DISMOD GIF STUDIO</p>
+        <h1>Enter access code</h1>
+        <p class="muted-copy">Enter your admin access code to manage the Dismod GIF catalog.</p>
+        <form id="login-form">
+          <label for="access-code">Admin access code</label>
+          <div class="code-input-row">
+            <input id="access-code" type="password" autocomplete="off" placeholder="Paste or type admin access code" required autofocus />
+            <button id="toggle-code" class="button quiet" type="button" aria-label="Toggle code visibility">Show</button>
+          </div>
+          <button class="button primary" type="submit">Sign in</button>
+          <p id="login-status" class="status" role="status"></p>
+        </form>
+        <p class="hint">Admin sessions stay active permanently on this device until you sign out.</p>
+      </section>
+
+      <div id="admin-app" hidden>
+        <section class="intro">
+          <p class="eyebrow">ADMIN CATALOG</p>
+          <h1>Make your GIF picker yours.</h1>
+          <p class="muted-copy">Import any public link or upload a file. Assign a named group and emoji; the GIF is converted, securely stored in your private cloud catalog, and instantly available in your Dismod app.</p>
+        </section>
+        <section class="workspace">
+          <form id="gif-form" class="panel import-panel">
+            <p class="eyebrow">NEW GIF</p><h2>Import from a link or file</h2>
+            <label for="gif-url">GIF or image link</label>
+            <div class="code-input-row">
+              <input id="gif-url" type="url" inputmode="url" placeholder="Paste link (Discord, boorus, Tenor, direct URLs...)" />
+              <label for="gif-file" class="button quiet file-btn" title="Choose file from your device">Upload file</label>
+              <input id="gif-file" type="file" accept="image/gif,image/webp,image/png,image/jpeg" hidden />
+            </div>
+            <p class="hint">Any public image or GIF link is supported. Or click "Upload file" to select a file directly from your device.</p>
+            <label for="gif-title">Name</label>
+            <input id="gif-title" type="text" maxlength="80" placeholder="Happy dance" required />
+
+            <div class="group-select-container">
+              <label for="gif-category-select">GIF group <span class="muted">· choose from existing</span></label>
+              <select id="gif-category-select" class="group-select">
+                <option value="">-- Choose existing group --</option>
+              </select>
+              <div id="group-chips" class="group-chips"></div>
+            </div>
+
+            <div class="field-grid">
+              <div><label for="gif-category">Group name</label><input id="gif-category" type="text" maxlength="32" value="Reactions" required /></div>
+              <div><label for="gif-emoji">Group emoji</label><input id="gif-emoji" type="text" maxlength="8" value="🙂" /></div>
+            </div>
+            <label for="gif-tags">Search tags <span class="muted">· comma separated</span></label><input id="gif-tags" type="text" maxlength="300" placeholder="happy, celebration, dance" />
+            <label class="permission-check"><input id="rights-confirmed" type="checkbox" /><span>I have permission to share this GIF with Dismod users.</span></label>
+            <div class="form-actions">
+              <button id="preview-button" class="button secondary" type="submit">Check &amp; preview</button>
+              <button id="publish-button" class="button primary" type="button" disabled>Add to Dismod App →</button>
+            </div>
+            <p id="form-status" class="status" role="status" aria-live="polite"></p>
+          </form>
+          <section class="panel preview-panel" aria-label="GIF preview">
+            <div class="panel-heading"><div><p class="eyebrow">PREVIEW</p><h2 id="preview-heading">Your GIF will appear here</h2></div><span class="badge">GIF</span></div>
+            <div class="preview-stage"><div id="preview-empty" class="preview-empty"><span class="preview-glyph">GIF</span><p>Check a link to see it animate</p><span>The file is normalized and checked before it enters the catalog.</span></div><img id="preview-image" alt="Imported GIF preview" hidden /></div>
+            <div id="preview-details" class="preview-details" hidden></div>
+            <p class="hint">The source URL is only used while importing. GIFs and catalog details are stored privately in Netlify cloud storage.</p>
+          </section>
+        </section>
+        <section class="library-section">
+          <div class="library-heading"><div><p class="eyebrow">SHARED WITH APP USERS</p><h2>Your Dismod GIFs <span id="gif-count" class="count">0</span></h2></div><button id="refresh-button" class="button quiet">Refresh</button></div>
+          <div id="pending-update" class="pending-update" hidden></div>
+          <div id="library-grid" class="library-grid"></div>
+          <p id="library-empty" class="library-empty" hidden>No GIFs yet. Import one above.</p>
+        </section>
+      </div>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.constraintlayout.compose.ConstraintLayout
+import androidx.constraintlayout.compose.Dimension
 import androidx.core.graphics.drawable.toBitmap
 import androidx.palette.graphics.Palette
 import chat.stoat.R
@@ -58,6 +59,10 @@ import chat.stoat.api.internals.ULID
 import chat.stoat.api.internals.UserQR
 import chat.stoat.core.model.schemas.User
 import chat.stoat.composables.generic.UserAvatar
+import chat.stoat.composables.profile.CosmeticEffectOverlay
+import chat.stoat.composables.profile.ProfileCosmeticsStore
+import chat.stoat.api.StoatAPI
+import chat.stoat.persistence.KVStorage
 import chat.stoat.ui.theme.FragmentMono
 import com.bumptech.glide.Glide
 import com.google.zxing.BarcodeFormat
@@ -78,6 +83,13 @@ fun UserCard(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val cosmetics by ProfileCosmeticsStore.current
+    val isSelf = user?.id != null && user.id == StoatAPI.selfId
+    LaunchedEffect(user?.id) {
+        if (isSelf) {
+            ProfileCosmeticsStore.load(KVStorage(context), user.id!!)
+        }
+    }
 
     var palette by remember { mutableStateOf<Palette?>(null) }
     LaunchedEffect(user) {
@@ -186,21 +198,40 @@ fun UserCard(
                     .fillMaxSize()
                     .clip(MaterialTheme.shapes.medium)
                     .background(
-                        Brush.linearGradient(
-                            listOf(
-                                Color(0xFF150E2A),
-                                Color(0xFF332354)
-                            ),
-                            start = Offset.Zero,
-                            end = Offset.Infinite
-                        )
+                        if (isSelf) {
+                            bannerBrush(cosmetics.bannerStyle) ?: Brush.linearGradient(
+                                listOf(Color(0xFF150E2A), Color(0xFF332354)),
+                                start = Offset.Zero,
+                                end = Offset.Infinite
+                            )
+                        } else {
+                            Brush.linearGradient(
+                                listOf(Color(0xFF150E2A), Color(0xFF332354)),
+                                start = Offset.Zero,
+                                end = Offset.Infinite
+                            )
+                        }
                     )
                     .padding(9.dp)
                     .border(3.dp, palette?.mutedSwatch?.rgb?.let { Color(it) }
                         ?: Color(0xFFFF005C), shape = MaterialTheme.shapes.medium)
                     .padding(16.dp)
             ) {
-                val (heading, nameLabel, name, usernameLabel, username, joinDateLabel, joinDate, qrLabel, qr, photoLabel, photo, url) = createRefs()
+                val (heading, nameLabel, name, usernameLabel, username, joinDateLabel, joinDate, qrLabel, qr, photoLabel, photo, url, effectLayer) = createRefs()
+
+                if (isSelf) {
+                    CosmeticEffectOverlay(
+                        cosmetics.profileEffect,
+                        Modifier.constrainAs(effectLayer) {
+                            top.linkTo(parent.top)
+                            bottom.linkTo(parent.bottom)
+                            start.linkTo(parent.start)
+                            end.linkTo(parent.end)
+                            width = Dimension.fillToConstraints
+                            height = Dimension.fillToConstraints
+                        }
+                    )
+                }
 
                 Image(
                     painter = painterResource(R.drawable.usercard_heading),
@@ -235,6 +266,18 @@ fun UserCard(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .fillMaxWidth(0.66f)
+                        .then(
+                            if (isSelf) {
+                                nameplateBrush(cosmetics.nameplate)?.let { brush ->
+                                    Modifier
+                                        .clip(MaterialTheme.shapes.small)
+                                        .background(brush)
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                } ?: Modifier
+                            } else {
+                                Modifier
+                            }
+                        )
                         .constrainAs(name) {
                             bottom.linkTo(usernameLabel.top, margin = 8.dp)
                             start.linkTo(usernameLabel.start)
@@ -356,6 +399,7 @@ fun UserCard(
                         userId = user?.id ?: "00000000000000000000000000",
                         avatar = user?.avatar,
                         shape = CircleShape,
+                        decorationId = if (isSelf) cosmetics.avatarDecoration else "none",
                         size = maxWidth / 3
                     )
                 }

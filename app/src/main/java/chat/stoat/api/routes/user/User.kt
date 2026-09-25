@@ -17,6 +17,8 @@ import io.ktor.http.contentType
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
+import chat.stoat.StoatApplication
+import chat.stoat.persistence.KVStorage
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonElement
 
@@ -39,6 +41,10 @@ suspend fun fetchSelf(): User {
 
     StoatAPI.userCache[user.id!!] = user
     StoatAPI.selfId = user.id
+    try {
+        KVStorage(StoatApplication.instance).set("selfId", user.id!!)
+    } catch (_: Exception) {}
+    StoatAPI.saveUsersToDisk()
 
     return user
 }

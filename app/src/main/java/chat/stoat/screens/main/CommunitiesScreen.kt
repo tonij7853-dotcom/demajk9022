@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -55,6 +56,8 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import chat.stoat.R
 import chat.stoat.api.StoatAPI
+import chat.stoat.api.realtime.DisconnectionState
+import chat.stoat.api.realtime.RealtimeSocket
 import chat.stoat.api.internals.CategorisedChannelList
 import chat.stoat.api.internals.ChannelUtils
 import chat.stoat.composables.generic.IconPlaceholder
@@ -79,6 +82,7 @@ fun CommunitiesScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
 
     val currentServer = servers.firstOrNull { it.id == selectedServerId } ?: servers.firstOrNull()
+    val isConnecting = RealtimeSocket.disconnectionState != DisconnectionState.Connected
 
     if (servers.isEmpty()) {
         Box(
@@ -87,10 +91,28 @@ fun CommunitiesScreen(navController: NavController) {
                 .padding(32.dp),
             contentAlignment = Alignment.Center
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
+            if (isConnecting) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(36.dp),
+                        strokeWidth = 3.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Loading communities...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
                 Box(
                     modifier = Modifier
                         .size(76.dp)
@@ -138,6 +160,7 @@ fun CommunitiesScreen(navController: NavController) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Create a Server", fontWeight = FontWeight.SemiBold)
                 }
+            }
             }
         }
     } else {

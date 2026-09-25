@@ -21,11 +21,13 @@ object ChannelUtils {
      * @see User.resolveDefaultName
      */
     fun resolveName(channel: Channel): String? {
+        val partnerId = resolveDMPartner(channel)
+        val customNick = partnerId?.let { chat.stoat.internals.CustomNicknames.getNickname(it) }
+        if (customNick != null) return customNick
+
         return channel.name
-            ?: StoatAPI.userCache[channel.recipients?.first { u -> u != StoatAPI.selfId }]?.let {
-                User.resolveDefaultName(
-                    it
-                )
+            ?: partnerId?.let { StoatAPI.userCache[it] }?.let {
+                User.resolveDefaultName(it)
             }
     }
 

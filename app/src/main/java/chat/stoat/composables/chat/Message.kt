@@ -149,14 +149,17 @@ fun authorName(message: MessageSchema): String {
         return message.masquerade!!.name!!
     }
 
-    val serverId =
-        StoatAPI.channelCache[message.channel]?.server
-            ?: return StoatAPI.userCache[message.author]?.let { User.resolveDefaultName(it) }
-                ?: stringResource(R.string.unknown)
+    val serverId = StoatAPI.channelCache[message.channel]?.server
+    if (serverId == null) {
+        val customNick = message.author?.let { chat.stoat.internals.CustomNicknames.getNickname(it) }
+        if (customNick != null) return customNick
+        return StoatAPI.userCache[message.author]?.let { User.resolveDefaultName(it) }
+            ?: stringResource(R.string.unknown)
+    }
 
     val member = message.author?.let { StoatAPI.members.getMember(serverId, it) }
-        ?: return stringResource(R.string.unknown)
-    return member.nickname
+    return member?.nickname
+        ?: message.author?.let { chat.stoat.internals.CustomNicknames.getNickname(it) }
         ?: StoatAPI.userCache[message.author]?.let { User.resolveDefaultName(it) }
         ?: stringResource(R.string.unknown)
 }
@@ -261,45 +264,37 @@ fun Message(
             viewUrlInBrowser(context, url)
         }
     }
-    var kv by remember { mutableStateOf<KVStorage?>(null) }
     var showUsernameDiscriminator by remember { mutableStateOf(false) }
     var ignoreServerAvatar by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        if (Experiments.enableServerIdentityOptions.isEnabled) {
-            val userId = author.id ?: return@LaunchedEffect
-            kv = KVStorage(context)
-            kv?.let {
+    if (Experiments.enableServerIdentityOptions.isEnabled) {
+        val userId = author.id
+        if (userId != null) {
+            LaunchedEffect(userId) {
+                val kv = KVStorage(context)
                 showUsernameDiscriminator =
-                    it.getBoolean("exp/serverIdentityOptions/$userId/showUsernameDiscriminator") == true
+                    kv.getBoolean("exp/serverIdentityOptions/$userId/showUsernameDiscriminator") == true
                 ignoreServerAvatar =
-                    it.getBoolean("exp/serverIdentityOptions/$userId/ignoreServerAvatar") == true
+                    kv.getBoolean("exp/serverIdentityOptions/$userId/ignoreServerAvatar") == true
             }
         }
     }
 
-    val attachmentView = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult(),
-        onResult = {
-            // do nothing
-        }
-    )
-
     val authorIsBlocked = remember(author) { author.relationship == "Blocked" }
 
-    var mentionsSelfRole by remember(message) { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
+    val mentionsSelfRole = remember(message.id, message.content, message.channel) {
         val serverId =
-            StoatAPI.channelCache[message.channel]?.server ?: return@LaunchedEffect
-        var selfMember = StoatAPI.selfId?.let { StoatAPI.members.getMember(serverId, it) }
-            ?: return@LaunchedEffect
-        var messageRoleMentions = MessageProcessor.findMentionedRoleIDs(message.content)
-
-        mentionsSelfRole = selfMember.roles?.any { it in messageRoleMentions } == true
+            StoatAPI.channelCache[message.channel]?.server ?: return@remember false
+        val selfId = StoatAPI.selfId ?: return@remember false
+        val selfMember = StoatAPI.members.getMember(serverId, selfId) ?: return@remember false
+        val messageRoleMentions = MessageProcessor.findMentionedRoleIDs(message.content)
+        selfMember.roles?.any { it in messageRoleMentions } == true
     }
 
-    Column(modifier.animateContentSize()) {
+    Column(modifier) {
         if (message.tail == false) {
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+        } else {
+            Spacer(modifier = Modifier.height(2.dp))
         }
 
         if (authorIsBlocked) {
@@ -383,12 +378,12 @@ fun Message(
                                 onMessageContextMenu()
                             }
                         )
-                        .padding(horizontal = 10.dp)
+                        .padding(horizontal = 16.dp, vertical = 2.dp)
                         .fillMaxWidth()
                 ) {
                     if (message.tail == false) {
                         Column {
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(2.dp))
                             UserAvatar(
                                 username = User.resolveDefaultName(author),
                                 userId = author.id ?: message.id ?: ULID.makeSpecial(0),
@@ -401,7 +396,7 @@ fun Message(
                         UserAvatarWidthPlaceholder()
                     }
 
-                    Column(modifier = Modifier.padding(start = 10.dp)) {
+                    Column(modifier = Modifier.padding(start = 14.dp)) {
                         if (message.tail == false) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
@@ -424,7 +419,8 @@ fun Message(
                                         }
                                     },
                                     style = LocalTextStyle.current.copy(
-                                        fontWeight = FontWeight.Bold,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 15.sp,
                                         brush = authorColour(message)
                                     ),
                                     maxLines = 1,
@@ -467,7 +463,7 @@ fun Message(
                                     }
                                 )
 
-                                Spacer(modifier = Modifier.width(5.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
 
                                 Text(
                                     text = messageTimestampText(
@@ -475,12 +471,12 @@ fun Message(
                                         timestamp = formatLongAsTime(ULID.asTimestamp(message.id!!))
                                     ),
                                     fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
 
-                                Spacer(modifier = Modifier.width(2.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
 
                                 if (message.edited != null) {
                                     Icon(
@@ -489,7 +485,7 @@ fun Message(
                                         tint = MaterialTheme.colorScheme.onBackground.copy(
                                             alpha = 0.5f
                                         ),
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(14.dp)
                                     )
                                 }
                             }
@@ -506,7 +502,7 @@ fun Message(
                                     GigamojiState.Multiple -> 2f
                                     GigamojiState.None -> 1f
                                 }
-                                Spacer(modifier = Modifier.height(2.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
                                 if (mdAst != null) {
                                     ChatMarkdown(
                                         mdAst,
@@ -525,11 +521,11 @@ fun Message(
 
                         message.attachments?.let {
                             it.forEach { attachment ->
-                                Spacer(modifier = Modifier.height(2.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
                                 MessageAttachment(attachment) {
                                     when (attachment.metadata?.type) {
                                         "Image" -> {
-                                            attachmentView.launch(
+                                            context.startActivity(
                                                 Intent(
                                                     context,
                                                     ImageViewActivity::class.java
@@ -540,7 +536,7 @@ fun Message(
                                         }
 
                                         "Video" -> {
-                                            attachmentView.launch(
+                                            context.startActivity(
                                                 Intent(
                                                     context,
                                                     VideoViewActivity::class.java

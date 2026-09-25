@@ -336,3 +336,44 @@ suspend fun searchChannel(
         )
     }
 }
+
+@kotlinx.serialization.Serializable
+data class CreateChannelBody(
+    val name: String,
+    val type: String = "Text",
+    val description: String? = null,
+    val nsfw: Boolean = false
+)
+
+suspend fun createChannel(
+    serverId: String,
+    name: String,
+    type: String = "Text",
+    description: String? = null,
+    nsfw: Boolean = false
+): Channel {
+    val body = CreateChannelBody(
+        name = name,
+        type = type,
+        description = if (description.isNullOrBlank()) null else description,
+        nsfw = nsfw
+    )
+
+    val response = StoatHttp.post("/servers/$serverId/channels".api()) {
+        contentType(ContentType.Application.Json)
+        setBody(StoatJson.encodeToString(CreateChannelBody.serializer(), body))
+    }.bodyAsText()
+
+    try {
+        val error = StoatJson.decodeFromString(StoatAPIError.serializer(), response)
+        throw Exception(error.type)
+    } catch (e: SerializationException) {
+        // Not an error
+    }
+
+    val channel = StoatJson.decodeFromString(Channel.serializer(), response)
+    channel.id?.let {
+        StoatAPI.channelCache[it] = channel
+    }
+    return channel
+}

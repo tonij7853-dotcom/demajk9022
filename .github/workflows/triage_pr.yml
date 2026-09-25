@@ -6,6 +6,10 @@ on:
 
 jobs:
   track_pr:
+    # This workflow targets Revolt's organization project and requires its PAT
+    # secret. It must not run in downstream forks, where the project is not
+    # accessible and the secret is intentionally unavailable.
+    if: ${{ github.repository == 'revoltchat/revolt' }}
     runs-on: ubuntu-latest
     steps:
       - name: Get project data
@@ -35,7 +39,7 @@ jobs:
 
           echo 'PROJECT_ID='$(jq '.data.organization.projectV2.id' project_data.json) >> $GITHUB_ENV
           echo 'STATUS_FIELD_ID='$(jq '.data.organization.projectV2.fields.nodes[] | select(.name== "Status") | .id' project_data.json) >> $GITHUB_ENV
-          echo 'INCOMING_OPTION_ID='$(jq '.data.organization.projectV2.fields.nodes[] | select(.name== "Status") | .options[] | select(.name=="🆕 Untriaged") |.id' project_data.json) >> $GITHUB_ENV
+          echo 'INCOMING_OPTION_ID='$(jq '.data.organization.projectV2.fields.nodes[] | select(.name== "Status") | .options[] | select(.name=="ðŸ†• Untriaged") |.id' project_data.json) >> $GITHUB_ENV
 
       - name: Add PR to project
         env:
@@ -77,3 +81,4 @@ jobs:
                 }
               }
             }' -f project=$PROJECT_ID -f item=$ITEM_ID -f status_field=$STATUS_FIELD_ID -f status_value=${{ env.INCOMING_OPTION_ID }} --silent
+

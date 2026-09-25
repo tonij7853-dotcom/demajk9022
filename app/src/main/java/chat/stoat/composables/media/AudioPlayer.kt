@@ -6,25 +6,39 @@ import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -37,258 +51,320 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.compose.ui.unit.sp
 import chat.stoat.R
 import chat.stoat.api.StoatHttp
+import chat.stoat.media.GlobalAudioPlayer
 import io.ktor.client.request.get
 import io.ktor.client.statement.readBytes
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/**
+ * Minimal Telegram-style inline audio player item in chat.
+ * Playback is handled by [GlobalAudioPlayer] singleton so scrolling up/down never interrupts playback.
+ */
 @Composable
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 fun AudioPlayer(url: String, filename: String, contentType: String) {
     val context = LocalContext.current
-
-    val showMenu = remember { mutableStateOf(false) }
-
-    val currentTime = remember { mutableLongStateOf(0L) }
-    val isPlaying = remember { mutableStateOf(false) }
-    val isLoading = remember { mutableStateOf(false) }
-
     val coroutineScope = rememberCoroutineScope()
+    val showMenu = remember { mutableStateOf(false) }
 
     val activityLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {}
 
-    val player = remember {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(url))
-            prepare()
-            addListener(object : Player.Listener {
-                override fun onIsPlayingChanged(playing: Boolean) {
-                    super.onIsPlayingChanged(playing)
-                    isPlaying.value = playing
-                }
-
-                override fun onIsLoadingChanged(loading: Boolean) {
-                    super.onIsLoadingChanged(loading)
-                    isLoading.value = loading
-                }
-            })
-        }
-    }
-
-    fun seekTo(position: Long) {
-        player.seekTo(position)
-        currentTime.longValue = position
-    }
-
-    fun formatTime(time: Long): String {
-        val seconds = time / 1000
-        val minutes = seconds / 60
-        val hours = minutes / 60
-
-        return when {
-            hours > 0 -> {
-                val remainingMinutes = minutes % 60
-                val remainingSeconds = seconds % 60
-
-                "%02d:%02d:%02d".format(hours, remainingMinutes, remainingSeconds)
-            }
-
-            else -> {
-                val remainingSeconds = seconds % 60
-
-                "%02d:%02d".format(minutes, remainingSeconds)
-            }
-        }
-    }
+    val isCurrentTrack = GlobalAudioPlayer.currentUrl == url
+    val isPlaying = isCurrentTrack && GlobalAudioPlayer.isPlaying
+    val isLoading = isCurrentTrack && GlobalAudioPlayer.isLoading
+    val currentPosition = if (isCurrentTrack) GlobalAudioPlayer.currentPosition else 0L
+    val duration = if (isCurrentTrack) GlobalAudioPlayer.duration else 0L
 
     fun saveToStorage() {
         showMenu.value = false
-
         coroutineScope.launch {
-            context.applicationContext.let {
-                it.contentResolver.insert(
+            try {
+                val resolver = context.applicationContext.contentResolver
+                val uri = resolver.insert(
                     MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                     ContentValues().apply {
                         put(MediaStore.Audio.Media.DISPLAY_NAME, filename)
                         put(MediaStore.Audio.Media.MIME_TYPE, contentType)
-                        put(MediaStore.Audio.Media.RELATIVE_PATH, "Music/Stoat")
+                        put(MediaStore.Audio.Media.RELATIVE_PATH, "Music/Dismod")
                         put(MediaStore.Audio.Media.IS_PENDING, 1)
                     }
                 )
-            }?.let { uri ->
-                context.contentResolver.openOutputStream(uri).use { stream ->
-                    val audio = StoatHttp.get(url).readBytes()
-                    stream?.write(audio)
-
-                    context.applicationContext.let {
-                        it.contentResolver.update(
-                            uri,
-                            ContentValues().apply {
-                                put(MediaStore.Audio.Media.IS_PENDING, 0)
-                            },
-                            null,
-                            null
-                        )
+                uri?.let { destUri ->
+                    resolver.openOutputStream(destUri)?.use { stream ->
+                        val audioBytes = StoatHttp.get(url).readBytes()
+                        stream.write(audioBytes)
                     }
-
+                    resolver.update(
+                        destUri,
+                        ContentValues().apply {
+                            put(MediaStore.Audio.Media.IS_PENDING, 0)
+                        },
+                        null,
+                        null
+                    )
                     Toast.makeText(
                         context,
                         context.getString(R.string.media_viewer_saved),
                         Toast.LENGTH_SHORT
                     ).show()
                 }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to save audio", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
     fun shareUrl() {
         showMenu.value = false
-
-        coroutineScope.launch {
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, url)
-            }
-
-            val shareIntent = Intent.createChooser(intent, null)
-            activityLauncher.launch(shareIntent)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, url)
         }
+        activityLauncher.launch(Intent.createChooser(intent, null))
     }
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            if (currentTime.longValue != player.currentPosition && player.isPlaying) {
-                currentTime.longValue = player.currentPosition
-            }
-
-            if (player.currentPosition == player.duration) {
-                player.seekTo(0)
-                player.pause()
-            }
-
-            if (player.duration < 0) {
-                currentTime.longValue = 0
-            }
-
-            delay(100)
-        }
-    }
-
-    DisposableEffect(player) {
-        onDispose {
-            player.release()
-        }
-    }
-
-    Column(
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(MaterialTheme.shapes.medium)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceContainer)
-            .padding(8.dp)
+            .border(
+                BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                ),
+                RoundedCornerShape(16.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+        // Minimal Circular Play / Pause Button
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .clickable {
+                    GlobalAudioPlayer.play(context, url, filename)
+                }
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    strokeWidth = 2.5.dp,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            } else {
+                Icon(
+                    painter = painterResource(
+                        if (isPlaying) R.drawable.ic_pause_24dp else R.drawable.ic_play_arrow_24dp
+                    ),
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        // Track Info & Progress
+        Column(
+            modifier = Modifier.weight(1f)
         ) {
             Text(
                 text = filename,
-                modifier = Modifier.weight(1f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.SemiBold
+                )
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = formatTime(currentTime.longValue),
-                fontWeight = FontWeight.Medium,
-                style = LocalTextStyle.current.copy(fontFeatureSettings = "tnum")
-            )
-            if (player.duration >= 0) {
+
+            if (isCurrentTrack && duration > 0) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Slider(
+                        value = currentPosition.toFloat(),
+                        onValueChange = { GlobalAudioPlayer.seekTo(it.toLong()) },
+                        valueRange = 0f..duration.toFloat(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = GlobalAudioPlayer.formatTime(currentPosition),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            fontFeatureSettings = "tnum"
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
                 Text(
-                    text = " / ${formatTime(player.duration)}",
-                    style = LocalTextStyle.current.copy(fontFeatureSettings = "tnum")
+                    text = if (isCurrentTrack) "Playing..." else "Audio",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                 )
             }
         }
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = {
-                if (isPlaying.value) {
-                    player.pause()
-                } else {
-                    player.play()
-                }
-            }) {
-                if (isLoading.value) {
-                    CircularProgressIndicator()
-                } else {
-                    if (isPlaying.value) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_pause_24dp),
-                            contentDescription = stringResource(R.string.media_viewer_pause)
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_play_arrow_24dp),
-                            contentDescription = stringResource(R.string.media_viewer_play)
-                        )
-                    }
-                }
-            }
 
-            if (player.duration >= 0) {
-                Slider(
-                    value = player.currentPosition.toFloat(),
-                    onValueChange = { seekTo(it.toLong()) },
-                    valueRange = 0f..player.duration.toFloat(),
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                Slider(
-                    value = 0f,
-                    onValueChange = {},
-                    valueRange = 0f..1f,
-                    enabled = false,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            IconButton(onClick = {
-                showMenu.value = !showMenu.value
-            }) {
+        // More Actions (Save, Share)
+        Box {
+            IconButton(
+                onClick = { showMenu.value = !showMenu.value },
+                modifier = Modifier.size(36.dp)
+            ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_more_vert_24dp),
-                    contentDescription = stringResource(R.string.media_viewer_more)
+                    contentDescription = stringResource(R.string.media_viewer_more),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                DropdownMenu(
-                    expanded = showMenu.value,
-                    onDismissRequest = {
-                        showMenu.value = false
+            }
+            DropdownMenu(
+                expanded = showMenu.value,
+                onDismissRequest = { showMenu.value = false }
+            ) {
+                DropdownMenuItem(
+                    onClick = { saveToStorage() },
+                    text = { Text(text = stringResource(R.string.media_viewer_save)) }
+                )
+                DropdownMenuItem(
+                    onClick = { shareUrl() },
+                    text = { Text(text = stringResource(R.string.media_viewer_share_url)) }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Sticky Telegram-style top audio player bar pinned at the top of the chat view.
+ * Displays title, play/pause controls, close button, and a thin progress bar.
+ */
+@Composable
+fun TelegramTopAudioPlayerBar(
+    modifier: Modifier = Modifier
+) {
+    val currentUrl = GlobalAudioPlayer.currentUrl
+    val isVisible = currentUrl != null
+
+    AnimatedVisibility(
+        visible = isVisible,
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically()
+    ) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shadowElevation = 6.dp,
+                tonalElevation = 2.dp,
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        // Play/Pause icon button
+                        IconButton(
+                            onClick = { GlobalAudioPlayer.togglePlay() },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            if (GlobalAudioPlayer.isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                Icon(
+                                    painter = painterResource(
+                                        if (GlobalAudioPlayer.isPlaying) R.drawable.ic_pause_24dp
+                                        else R.drawable.ic_play_arrow_24dp
+                                    ),
+                                    contentDescription = if (GlobalAudioPlayer.isPlaying) "Pause" else "Play",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        // Title & Time info
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = GlobalAudioPlayer.currentTitle ?: "Audio",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp
+                                )
+                            )
+                            Text(
+                                text = "${GlobalAudioPlayer.formatTime(GlobalAudioPlayer.currentPosition)} / ${GlobalAudioPlayer.formatTime(GlobalAudioPlayer.duration)}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontFeatureSettings = "tnum"
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Close / Stop button
+                        IconButton(
+                            onClick = { GlobalAudioPlayer.stop() },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_close_24dp),
+                                contentDescription = "Close player",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
-                ) {
-                    DropdownMenuItem(
-                        onClick = {
-                            saveToStorage()
-                        },
-                        text = {
-                            Text(text = stringResource(R.string.media_viewer_save))
-                        }
-                    )
-                    DropdownMenuItem(
-                        onClick = {
-                            shareUrl()
-                        },
-                        text = {
-                            Text(text = stringResource(R.string.media_viewer_share_url))
-                        }
+
+                    // Progress bar neatly rounded at the bottom of the floating card
+                    LinearProgressIndicator(
+                        progress = { GlobalAudioPlayer.progressFraction },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                 }
             }

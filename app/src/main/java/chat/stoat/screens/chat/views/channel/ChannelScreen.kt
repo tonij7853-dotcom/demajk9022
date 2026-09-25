@@ -106,6 +106,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -113,6 +114,9 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.Placeholder
+import chat.stoat.composables.chat.ChatBackgroundManager
+import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
+import com.bumptech.glide.integration.compose.GlideImage
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -135,7 +139,10 @@ import chat.stoat.api.internals.ChannelUtils
 import chat.stoat.api.internals.PermissionBit
 import chat.stoat.api.internals.has
 import chat.stoat.api.routes.channel.react
+import chat.stoat.api.routes.channel.sendMessage
 import chat.stoat.api.routes.microservices.autumn.FileArgs
+import chat.stoat.api.routes.microservices.autumn.uploadToAutumn
+import chat.stoat.api.internals.ULID
 import chat.stoat.callbacks.Action
 import chat.stoat.callbacks.ActionChannel
 import chat.stoat.composables.chat.DateDivider
@@ -144,11 +151,13 @@ import chat.stoat.composables.chat.MessageField
 import chat.stoat.composables.chat.SystemMessage
 import chat.stoat.composables.emoji.EmojiPicker
 import chat.stoat.composables.generic.GroupIcon
+import chat.stoat.composables.generic.LocalAllowGifAnimation
 import chat.stoat.composables.generic.PresenceBadge
 import chat.stoat.composables.generic.UserAvatar
 import chat.stoat.composables.generic.UserAvatarWidthPlaceholder
 import chat.stoat.composables.generic.presenceFromStatus
 import chat.stoat.composables.media.MediaPickerGateway
+import chat.stoat.composables.media.TelegramTopAudioPlayerBar
 import chat.stoat.composables.screens.chat.AttachmentManager
 import chat.stoat.composables.screens.chat.ChannelIcon
 import chat.stoat.composables.screens.chat.ReplyManager
@@ -168,6 +177,7 @@ import chat.stoat.sheets.ChannelInfoSheet
 import chat.stoat.sheets.GifPickerSheet
 import chat.stoat.sheets.MessageContextSheet
 import chat.stoat.sheets.ReactSheet
+import chat.stoat.sheets.UserInfoSheet
 import chat.stoat.ui.theme.ClaudeTokens
 import com.mikepenz.markdown.model.State
 import com.valentinilk.shimmer.ShimmerBounds
@@ -178,6 +188,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
+import io.ktor.http.ContentType
 import org.koin.androidx.compose.koinViewModel
 import java.io.File
 import kotlin.math.max
@@ -212,7 +223,7 @@ private const val NOT_ENOUGH_SPACE_FOR_PANES_THRESHOLD = 500
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @OptIn(
     ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class,
-    ExperimentalMaterial3ExpressiveApi::class
+    ExperimentalMaterial3ExpressiveApi::class, ExperimentalGlideComposeApi::class
 )
 @Composable
 fun ChannelScreen(
@@ -234,6 +245,14 @@ fun ChannelScreen(
     val context = LocalContext.current
     val resources = LocalResources.current
     val config = LocalConfiguration.current
+    var showChatBackgroundSheet by rememberSaveable { mutableStateOf(false) }
+    var profilePreviewUserId by remember { mutableStateOf<String?>(null) }
+    var profilePreviewServerId by remember { mutableStateOf<String?>(null) }
+
+    fun openUserProfilePreview(userId: String, serverId: String?) {
+        profilePreviewUserId = userId
+        profilePreviewServerId = serverId
+    }
 
     DisposableEffect(Unit) {
         val job = scope.launch { viewModel.listenToUiCallbacks() }
@@ -591,6 +610,23 @@ fun ChannelScreen(
     }
     // </editor-fold>
     // <editor-fold desc="Sheets">
+    if (profilePreviewUserId != null) {
+        val profilePreviewSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            sheetState = profilePreviewSheetState,
+            onDismissRequest = { profilePreviewUserId = null }
+        ) {
+            UserInfoSheet(
+                userId = profilePreviewUserId!!,
+                serverId = profilePreviewServerId,
+                dismissSheet = {
+                    profilePreviewSheetState.hide()
+                    profilePreviewUserId = null
+                }
+            )
+        }
+    }
+
     var channelInfoSheetShown by remember { mutableStateOf(false) }
     if (channelInfoSheetShown) {
         val channelInfoSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -690,7 +726,34 @@ fun ChannelScreen(
             onDismissRequest = { gifPickerSheetShown = false },
             onGifSelected = { uri ->
                 gifPickerSheetShown = false
-                processFileUri(uri, null)
+                val gifFile = uri.path?.let(::File)
+                if (gifFile == null || !gifFile.isFile) {
+                    scope.launch {
+                        snackbarHostState.showSnackbar("Couldn't prepare this GIF. Try again.")
+                    }
+                } else {
+                    scope.launch {
+                        try {
+                            val attachmentId = uploadToAutumn(
+                                file = gifFile,
+                                name = "${gifFile.nameWithoutExtension}.gif",
+                                tag = "attachments",
+                                contentType = ContentType.Image.GIF
+                            )
+                            sendMessage(
+                                channelId = channelId,
+                                content = "",
+                                nonce = ULID.makeNext(),
+                                attachments = listOf(attachmentId),
+                                idempotencyKey = ULID.makeNext()
+                            )
+                        } catch (_: Exception) {
+                            snackbarHostState.showSnackbar("Couldn't send this GIF. Try again.")
+                        } finally {
+                            gifFile.delete()
+                        }
+                    }
+                }
             }
         )
     }
@@ -711,7 +774,14 @@ fun ChannelScreen(
                 }
                 TopAppBar(
                     modifier = Modifier.clickable {
-                        channelInfoSheetShown = true
+                        val currentChannel = viewModel.channel
+                        if (currentChannel != null && currentChannel.channelType == ChannelType.DirectMessage) {
+                            ChannelUtils.resolveDMPartner(currentChannel)?.let { partnerId ->
+                                openUserProfilePreview(partnerId, null)
+                            }
+                        } else {
+                            channelInfoSheetShown = true
+                        }
                     },
                     title = {
                         Row(
@@ -728,7 +798,12 @@ fun ChannelScreen(
                                             userId = ChannelUtils.resolveDMPartner(it) ?: "",
                                             size = 24.dp,
                                             presenceSize = 12.dp,
-                                            avatar = partner?.avatar
+                                            avatar = partner?.avatar,
+                                            onClick = {
+                                                ChannelUtils.resolveDMPartner(it)?.let { partnerId ->
+                                                    openUserProfilePreview(partnerId, null)
+                                                }
+                                            }
                                         )
                                     }
 
@@ -830,6 +905,14 @@ fun ChannelScreen(
                     },
                     actions = {
                         var overflowMenuExpanded by remember { mutableStateOf(false) }
+
+                        IconButton(onClick = { showChatBackgroundSheet = true }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_photo_library_24dp),
+                                contentDescription = "Chat Background"
+                            )
+                        }
+
                         Box {
                             IconButton(onClick = { overflowMenuExpanded = true }) {
                                 Icon(
@@ -841,6 +924,19 @@ fun ChannelScreen(
                                 expanded = overflowMenuExpanded,
                                 onDismissRequest = { overflowMenuExpanded = false }
                             ) {
+                                DropdownMenuItem(
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_photo_library_24dp),
+                                            contentDescription = null
+                                        )
+                                    },
+                                    text = { Text("Chat Background") },
+                                    onClick = {
+                                        overflowMenuExpanded = false
+                                        showChatBackgroundSheet = true
+                                    }
+                                )
                                 DropdownMenuItem(
                                     leadingIcon = {
                                         Icon(
@@ -875,6 +971,7 @@ fun ChannelScreen(
                         }
                     }
                 )
+                TelegramTopAudioPlayerBar()
             }
         }
     ) { pv ->
@@ -912,6 +1009,24 @@ fun ChannelScreen(
                             modifier = Modifier.weight(1f),
                             contentAlignment = Alignment.BottomCenter
                         ) {
+                            val bgRevision = ChatBackgroundManager.revision
+                            val customBg = remember(bgRevision, channelId) {
+                                ChatBackgroundManager.getBackgroundFile(context, channelId)
+                            }
+
+                            if (customBg != null && customBg.exists()) {
+                                GlideImage(
+                                    model = customBg,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.45f))
+                                )
+                            }
                             if (viewModel.items.isEmpty() && !viewModel.isLoadingOlder && !viewModel.isJumpLoading) {
                                 Column(
                                     modifier = Modifier
@@ -973,16 +1088,16 @@ fun ChannelScreen(
                                     viewModel.items.size,
                                     key = { index ->
                                         if (index < 0 || index >= viewModel.items.size) {
-                                            return@items index
+                                            return@items "idx_$index"
                                         }
                                         when (val item = viewModel.items[index]) {
-                                            is ChannelScreenItem.RegularMessage -> item.message.id!!
-                                            is ChannelScreenItem.ProspectiveMessage -> item.message.id!!
-                                            is ChannelScreenItem.FailedMessage -> item.message.id!!
-                                            is ChannelScreenItem.SystemMessage -> item.message.id!!
-                                            is ChannelScreenItem.DateDivider -> item.instant.toEpochMilliseconds()
-                                            is ChannelScreenItem.LoadTrigger -> index
-                                            is ChannelScreenItem.Loading -> index
+                                            is ChannelScreenItem.RegularMessage -> item.message.id ?: "reg_$index"
+                                            is ChannelScreenItem.ProspectiveMessage -> item.message.id ?: "pro_$index"
+                                            is ChannelScreenItem.FailedMessage -> item.message.id ?: "fail_$index"
+                                            is ChannelScreenItem.SystemMessage -> item.message.id ?: "sys_$index"
+                                            is ChannelScreenItem.DateDivider -> "date_${item.instant.toEpochMilliseconds()}"
+                                            is ChannelScreenItem.LoadTrigger -> "trigger_${item.after}_${item.before}"
+                                            is ChannelScreenItem.Loading -> "loading_$index"
                                         }
                                     },
                                     contentType = { index ->
@@ -1005,76 +1120,105 @@ fun ChannelScreen(
                                     val item = viewModel.items[index]
                                     val messageId = item.messageIdOrNull()
                                     val isHighlighted =
-                                        highlightedMessageId?.let { it == messageId } == true
-                                    val highlightColor by animateColorAsState(
-                                        targetValue = if (isHighlighted) {
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                                        } else {
-                                            Color.Transparent
-                                        },
-                                        animationSpec = tween(durationMillis = 500),
-                                        label = "messageJumpHighlight",
-                                    )
+                                        highlightedMessageId != null && highlightedMessageId == messageId
+                                    val highlightModifier = if (isHighlighted) {
+                                        val highlightColor by animateColorAsState(
+                                            targetValue = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                            animationSpec = tween(durationMillis = 500),
+                                            label = "messageJumpHighlight",
+                                        )
+                                        Modifier.background(highlightColor)
+                                    } else {
+                                        Modifier
+                                    }
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .background(highlightColor)
+                                            .then(highlightModifier)
                                     ) {
                                         when (item) {
                                             is ChannelScreenItem.RegularMessage -> {
-                                                RegularMessage(
-                                                    item.message,
-                                                    viewModel.channel,
-                                                    drawerIsOpen = drawerIsOpen,
-                                                    setDrawerGestureEnabled = {
-                                                        setDrawerGestureEnabled(it)
-                                                    },
-                                                    setDisableScroll = {
-                                                        disableScroll = it
-                                                    },
-                                                    showMessageBottomSheet = {
-                                                        messageContextSheetTarget = it
-                                                        messageContextSheetShown = true
-                                                    },
-                                                    showReactBottomSheet = {
-                                                        item.message.id?.let {
-                                                            reactSheetTarget = it
-                                                            reactSheetShown = true
-                                                        }
-                                                    },
-                                                    putTextAtCursorPosition = viewModel::putAtCursorPosition,
-                                                    replyToMessage = viewModel::addReplyTo,
-                                                    jumpToMessage = viewModel::requestJump,
-                                                    scope = scope,
-                                                    mdAst = item.mdAst
-                                                )
-                                            }
-
-                                            is ChannelScreenItem.ProspectiveMessage -> {
-                                                Box(Modifier.alpha(0.5f)) {
-                                                    Message(
-                                                        message = item.message,
-                                                        onMessageContextMenu = {
-                                                            // TODO Context menu that allows you to cancel send
+                                                CompositionLocalProvider(
+                                                    LocalAllowGifAnimation provides !lazyListState.isScrollInProgress
+                                                ) {
+                                                    RegularMessage(
+                                                        item.message,
+                                                        viewModel.channel,
+                                                        drawerIsOpen = drawerIsOpen,
+                                                        setDrawerGestureEnabled = {
+                                                            setDrawerGestureEnabled(it)
                                                         },
-                                                        onAvatarClick = {},
-                                                        onNameClick = {},
-                                                        canReply = false,
-                                                        onReply = {},
-                                                        onAddReaction = {},
-                                                        mdAst = item.mdAst,
+                                                        setDisableScroll = {
+                                                            disableScroll = it
+                                                        },
+                                                        showMessageBottomSheet = {
+                                                            messageContextSheetTarget = it
+                                                            messageContextSheetShown = true
+                                                        },
+                                                        showReactBottomSheet = {
+                                                            item.message.id?.let {
+                                                                reactSheetTarget = it
+                                                                reactSheetShown = true
+                                                            }
+                                                        },
+                                                        putTextAtCursorPosition = viewModel::putAtCursorPosition,
+                                                        replyToMessage = viewModel::addReplyTo,
+                                                        jumpToMessage = viewModel::requestJump,
+                                                        onOpenUserProfile = ::openUserProfilePreview,
+                                                        scope = scope,
+                                                        mdAst = item.mdAst
                                                     )
                                                 }
                                             }
 
+                                            is ChannelScreenItem.ProspectiveMessage -> {
+                                                CompositionLocalProvider(
+                                                    LocalAllowGifAnimation provides !lazyListState.isScrollInProgress
+                                                ) {
+                                                    Box(Modifier.alpha(0.5f)) {
+                                                        Message(
+                                                            message = item.message,
+                                                            onMessageContextMenu = {
+                                                                // TODO Context menu that allows you to cancel send
+                                                            },
+                                                            onAvatarClick = {
+                                                                StoatAPI.selfId?.let { userId ->
+                                                                    openUserProfilePreview(userId, viewModel.channel?.server)
+                                                                }
+                                                            },
+                                                            onNameClick = {
+                                                                StoatAPI.selfId?.let { userId ->
+                                                                    openUserProfilePreview(userId, viewModel.channel?.server)
+                                                                }
+                                                            },
+                                                            canReply = false,
+                                                            onReply = {},
+                                                            onAddReaction = {},
+                                                            mdAst = item.mdAst,
+                                                        )
+                                                    }
+                                                }
+                                            }
+
                                             is ChannelScreenItem.FailedMessage -> {
-                                                CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.error) {
+                                                CompositionLocalProvider(
+                                                    LocalContentColor provides MaterialTheme.colorScheme.error,
+                                                    LocalAllowGifAnimation provides !lazyListState.isScrollInProgress
+                                                ) {
                                                     Column {
                                                         Message(
                                                             message = item.message,
                                                             onMessageContextMenu = {},
-                                                            onAvatarClick = {},
-                                                            onNameClick = {},
+                                                            onAvatarClick = {
+                                                                StoatAPI.selfId?.let { userId ->
+                                                                    openUserProfilePreview(userId, viewModel.channel?.server)
+                                                                }
+                                                            },
+                                                            onNameClick = {
+                                                                StoatAPI.selfId?.let { userId ->
+                                                                    openUserProfilePreview(userId, viewModel.channel?.server)
+                                                                }
+                                                            },
                                                             canReply = false,
                                                             onReply = {},
                                                             onAddReaction = {},
@@ -1304,8 +1448,8 @@ fun ChannelScreen(
                                         }
                                     }
                                 }
-                            }
                         }
+                    }
 
                         Column(
                             modifier = Modifier
@@ -1408,6 +1552,10 @@ fun ChannelScreen(
                                                     viewModel.activePane =
                                                         ChannelScreenActivePane.EmojiPicker
                                                 }
+                                            },
+                                            onPickGif = {
+                                                viewModel.activePane = ChannelScreenActivePane.None
+                                                gifPickerSheetShown = true
                                             },
                                             onSendMessage = viewModel::sendPendingMessage,
                                             channelType = viewModel.channel?.channelType
@@ -1639,4 +1787,11 @@ fun ChannelScreen(
         }
     }
     // </editor-fold>
+
+    if (showChatBackgroundSheet) {
+        ChatBackgroundSheet(
+            channelId = channelId,
+            onDismiss = { showChatBackgroundSheet = false }
+        )
+    }
 }

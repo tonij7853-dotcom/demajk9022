@@ -58,8 +58,11 @@ import kotlinx.serialization.json.Json
 import logcat.LogPriority
 import logcat.asLog
 import logcat.logcat
+import java.io.File
 import java.net.SocketException
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.coroutineScope
+import kotlinx.serialization.encodeToString
 import chat.stoat.core.model.schemas.Channel as ChannelSchema
 
 fun String.api(): String {
@@ -185,11 +188,33 @@ object StoatAPI {
         sessionId = id
     }
 
-    suspend fun loginAs(token: String) {
+    suspend fun loginAs(token: String) = coroutineScope {
         setSessionHeader(token)
-        fetchSelf()
-        startSocketOps()
-        unreads.sync()
+        launch {
+            try {
+                startSocketOps()
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR) { "Failed starting socket ops:\n${e.asLog()}" }
+            }
+        }
+        launch {
+            try {
+                fetchSelf()
+            } catch (e: Exception) {
+                val msg = e.message.orEmpty()
+                if (msg.contains("Unauthorized") || msg.contains("InvalidSession") || msg.contains("Forbidden")) {
+                    throw e
+                }
+                logcat(LogPriority.ERROR) { "Failed fetching self:\n${e.asLog()}" }
+            }
+        }
+        launch {
+            try {
+                unreads.sync()
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR) { "Failed syncing unreads:\n${e.asLog()}" }
+            }
+        }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -368,7 +393,38 @@ object StoatAPI {
         serverCache.clear()
         serverCache.putAll(servers.associateBy { it.id!! })
 
+        loadUsersFromDisk()
+
         openForLocalHydration = false
+    }
+
+    fun saveUsersToDisk() {
+        try {
+            val users = userCache.values.toList()
+            if (users.isEmpty()) return
+            val file = File(StoatApplication.instance.filesDir, "cached_users.json")
+            val json = StoatJson.encodeToString(users)
+            file.writeText(json)
+        } catch (e: Exception) {
+            Log.e("StoatAPI", "Failed to save users to disk", e)
+        }
+    }
+
+    fun loadUsersFromDisk() {
+        try {
+            val file = File(StoatApplication.instance.filesDir, "cached_users.json")
+            if (!file.exists()) return
+            val json = file.readText()
+            val users = StoatJson.decodeFromString<List<User>>(json)
+            users.forEach { user ->
+                val uid = user.id
+                if (uid != null && !userCache.containsKey(uid)) {
+                    userCache[uid] = user
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("StoatAPI", "Failed to load users from disk", e)
+        }
     }
 
     /**
@@ -378,6 +434,10 @@ object StoatAPI {
         val db = Database(SqlStorage.driver)
         db.serverQueries.clear()
         db.channelQueries.clear()
+        try {
+            val file = File(StoatApplication.instance.filesDir, "cached_users.json")
+            if (file.exists()) file.delete()
+        } catch (_: Exception) {}
     }
 
     /**

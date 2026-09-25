@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -157,6 +158,7 @@ fun MessageField(
     onAddAttachment: () -> Unit,
     onCommitAttachment: (Uri) -> Unit,
     onPickEmoji: () -> Unit,
+    onPickGif: (() -> Unit)? = null,
     onSendMessage: () -> Unit,
     channelType: ChannelType,
     channelName: String,
@@ -597,6 +599,35 @@ fun MessageField(
                     fontSize = 15.sp,
                     color = if (showFormattingToolbar) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            // GIF button with touch target >= 48dp
+            if (onPickGif != null) {
+                IconButton(
+                    onClick = {
+                        focusManager.clearFocus()
+                        onPickGif()
+                    },
+                    modifier = Modifier
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                        .testTag("pick_gif")
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .border(1.5.dp, MaterialTheme.colorScheme.onSurfaceVariant, RoundedCornerShape(6.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "GIF",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            letterSpacing = (-0.5).sp
+                        )
+                    }
+                }
             }
 
             // Emoji button with touch target >= 48dp

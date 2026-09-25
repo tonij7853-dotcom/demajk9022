@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,7 +23,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DismissibleDrawerSheet
 import androidx.compose.material3.DismissibleNavigationDrawer
@@ -235,6 +239,8 @@ class ChatRouterViewModel(
 
     fun setSaveDestination(destination: ChatRouterDestination) {
         currentDestination = destination
+        chat.stoat.c2dm.ActiveChannelTracker.activeChannelId =
+            (destination as? ChatRouterDestination.Channel)?.channelId
 
         viewModelScope.launch {
             kvStorage.set("currentDestination", destination.asSerialisedString())
@@ -668,7 +674,7 @@ fun ChatRouterScreen(
     }
 
     if (showUserContextSheet) {
-        val userContextSheetState = rememberModalBottomSheetState()
+        val userContextSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
         ModalBottomSheet(
             sheetState = userContextSheetState,
@@ -959,9 +965,12 @@ fun ChatRouterScreen(
                         DismissibleDrawerSheet(
                             drawerContainerColor = Color.Transparent,
                             windowInsets = WindowInsets.zero,
-                            modifier = Modifier.onSizeChanged {
-                                drawerWidth = it.width.toFloat()
-                            }
+                            modifier = Modifier
+                                .widthIn(max = 310.dp)
+                                .fillMaxWidth(0.84f)
+                                .onSizeChanged {
+                                    drawerWidth = it.width.toFloat()
+                                }
                         ) {
                             Sidebar(
                                 viewModel = viewModel,
@@ -986,7 +995,29 @@ fun ChatRouterScreen(
                         }
                     },
                     content = {
-                        Box(Modifier.fillMaxSize()) {
+                        var totalDragX by remember { mutableFloatStateOf(0f) }
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .pointerInput(useSidebarGesture, drawerState.isOpen) {
+                                    if (!useSidebarGesture) return@pointerInput
+                                    detectHorizontalDragGestures(
+                                        onDragStart = { totalDragX = 0f },
+                                        onDragEnd = {
+                                            if (!drawerState.isOpen && totalDragX > 70f) {
+                                                scope.launch { drawerState.open() }
+                                            } else if (drawerState.isOpen && totalDragX < -70f) {
+                                                scope.launch { drawerState.close() }
+                                            }
+                                            totalDragX = 0f
+                                        },
+                                        onDragCancel = { totalDragX = 0f },
+                                        onHorizontalDrag = { _, dragAmount ->
+                                            totalDragX += dragAmount
+                                        }
+                                    )
+                                }
+                        ) {
                             ChannelNavigator(
                                 dest = viewModel.currentDestination,
                                 topNav = topNav,
@@ -1007,6 +1038,10 @@ fun ChatRouterScreen(
 
                             // This is the overlay on the main content when the drawer is open
                             val interactionSource = remember { MutableInteractionSource() }
+                            val scrimAlpha = if (drawerWidth > 0f) {
+                                ((1.0f + (drawerState.currentOffset / drawerWidth)) * 0.7f).coerceIn(0f, 0.7f)
+                            } else if (drawerState.isOpen) 0.7f else 0f
+
                             Box(
                                 Modifier
                                     .then(
@@ -1028,9 +1063,7 @@ fun ChatRouterScreen(
                                         MaterialTheme
                                             .colorScheme
                                             .surfaceContainerLowest
-                                            .copy(
-                                                alpha = (1.0f + (drawerState.currentOffset / drawerWidth)) * 0.7f
-                                            )
+                                            .copy(alpha = scrimAlpha)
                                     )
                             )
                         }

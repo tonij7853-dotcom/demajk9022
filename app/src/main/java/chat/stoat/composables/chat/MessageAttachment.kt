@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -88,29 +90,38 @@ fun ImageAttachment(attachment: AutumnResource) {
     val hazeState =
         if (attachment.filename?.startsWith("SPOILER_") == true) rememberHazeState() else null
 
+    val metaWidth = attachment.metadata?.width?.toFloat() ?: 1f
+    val metaHeight = attachment.metadata?.height?.toFloat() ?: 1f
+    val aspectRatio = if (metaHeight > 0f) (metaWidth / metaHeight).coerceIn(0.35f, 3.0f) else 1f
+
     BoxWithConstraints {
+        val maxAttachmentWidth = minOf(attachment.metadata?.width?.toInt()?.dp ?: maxWidth, maxWidth, 340.dp)
+        val maxAttachmentHeight = 280.dp
+
+        val imageModifier = Modifier
+            .widthIn(max = maxAttachmentWidth)
+            .heightIn(max = maxAttachmentHeight)
+            .aspectRatio(aspectRatio)
+            .clip(MaterialTheme.shapes.medium)
+            .then(
+                if (hazeState != null) Modifier.hazeSource(state = hazeState)
+                else Modifier
+            )
+
         RemoteImage(
             url = url,
             contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .width(attachment.metadata?.width?.toInt()?.dp ?: maxWidth)
-                .aspectRatio(
-                    attachment.metadata!!.width!!.toFloat() / attachment.metadata!!.height!!.toFloat()
-                )
-                .then(
-                    if (hazeState != null) Modifier.hazeSource(state = hazeState)
-                    else Modifier
-                ),
+            modifier = imageModifier,
             description = attachment.filename ?: "Image"
         )
         if (attachment.filename?.startsWith("SPOILER_") == true && !spoilerShown) {
             Box(
                 modifier = Modifier
                     .hazeEffect(state = hazeState, style = HazeMaterials.ultraThin())
-                    .width(attachment.metadata?.width?.toInt()?.dp ?: maxWidth)
-                    .aspectRatio(
-                        attachment.metadata!!.width!!.toFloat() / attachment.metadata!!.height!!.toFloat()
-                    )
+                    .widthIn(max = maxAttachmentWidth)
+                    .heightIn(max = maxAttachmentHeight)
+                    .aspectRatio(aspectRatio)
+                    .clip(MaterialTheme.shapes.medium)
                     .clickable { spoilerShown = true },
                 contentAlignment = Alignment.Center
             ) {

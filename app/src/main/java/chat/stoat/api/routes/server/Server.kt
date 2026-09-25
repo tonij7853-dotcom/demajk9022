@@ -11,10 +11,13 @@ import chat.stoat.core.model.schemas.User
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 
@@ -121,4 +124,41 @@ suspend fun createServer(
     }
 
     return StoatJson.decodeFromString(ServerWithChannelObjects.serializer(), response.bodyAsText())
+}
+
+@Serializable
+data class EditMemberNicknameBody(
+    val nickname: String? = null,
+    val remove: List<String>? = null
+)
+
+suspend fun editMemberNickname(serverId: String, userId: String, nickname: String?): Member {
+    val body = if (nickname.isNullOrBlank()) {
+        EditMemberNicknameBody(remove = listOf("Nickname"))
+    } else {
+        EditMemberNicknameBody(nickname = nickname.trim())
+    }
+
+    val response = StoatHttp.patch("/servers/$serverId/members/$userId".api()) {
+        contentType(ContentType.Application.Json)
+        setBody(StoatJson.encodeToString(EditMemberNicknameBody.serializer(), body))
+    }
+
+    try {
+        val error = StoatJson.decodeFromString(StoatAPIError.serializer(), response.bodyAsText())
+        throw Exception(error.type)
+    } catch (e: SerializationException) {
+        // Not an error
+    }
+
+    val updatedMember = runCatching {
+        StoatJson.decodeFromString(Member.serializer(), response.bodyAsText())
+    }.getOrElse {
+        val current = StoatAPI.members.getMember(serverId, userId)
+        val trimmed = nickname?.trim()?.takeIf { it.isNotBlank() }
+        current?.copy(nickname = trimmed) ?: Member(nickname = trimmed)
+    }
+
+    StoatAPI.members.setMember(serverId, updatedMember)
+    return updatedMember
 }

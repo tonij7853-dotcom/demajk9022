@@ -432,10 +432,12 @@ class ChannelScreenViewModel(
     }
 
     suspend fun addReplyTo(messageId: String) {
-        if (draftReplyTo.size >= 5) return
-        if (draftReplyTo.any { it.id == messageId }) return
+        if (draftReplyTo.size == 1 && draftReplyTo[0].id == messageId) {
+            return
+        }
 
         val shouldMention = kvStorage.getBoolean("mentionOnReply") ?: false
+        draftReplyTo.clear()
         draftReplyTo.add(SendMessageReply(messageId, shouldMention))
     }
 
@@ -1106,10 +1108,16 @@ class ChannelScreenViewModel(
                             m is ChannelScreenItem.RegularMessage && m.message.id == it.messageId
                         } as? ChannelScreenItem.RegularMessage ?: return@onEach
 
+                        val targetId = message.message.id ?: return@onEach
+                        if (draftReplyTo.size == 1 && draftReplyTo[0].id == targetId) {
+                            return@onEach
+                        }
+
                         val shouldMention = kvStorage.getBoolean("mentionOnReply") ?: false
+                        draftReplyTo.clear()
                         draftReplyTo.add(
                             SendMessageReply(
-                                message.message.id ?: return@onEach,
+                                targetId,
                                 shouldMention
                             )
                         )
@@ -1131,10 +1139,12 @@ class ChannelScreenViewModel(
                             m is ChannelScreenItem.RegularMessage && m.message.id == it.messageId
                         } as? ChannelScreenItem.RegularMessage ?: return@onEach
 
+                        val targetId = message.message.id ?: return@onEach
                         val shouldMention = kvStorage.getBoolean("mentionOnReply") ?: false
+                        draftReplyTo.clear()
                         draftReplyTo.add(
                             SendMessageReply(
-                                message.message.id ?: return@onEach,
+                                targetId,
                                 shouldMention
                             )
                         )
