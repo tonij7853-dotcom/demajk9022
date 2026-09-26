@@ -1,0 +1,281 @@
+package chat.stoat.screens.settings
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationManagerCompat
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.navigation.NavController
+import chat.stoat.R
+import chat.stoat.api.routes.push.subscribePush
+import chat.stoat.api.routes.push.unsubscribePush
+import chat.stoat.composables.generic.CenteredListItem
+import chat.stoat.dialogs.NotificationRationaleDialog
+import chat.stoat.persistence.KVStorage
+import chat.stoat.settings.dsl.SettingsPage
+import com.google.android.gms.tasks.OnCompleteListener
+import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.launch
+import org.koin.androidx.compose.koinViewModel
+
+@SuppressLint("StaticFieldLeak")
+class NotificationsSettingsScreenViewModel(
+    private val kvStorage: KVStorage,
+    private val context: Context
+) : ViewModel() {
+    var showRationale by mutableStateOf(false)
+    var isPushEnabled by mutableStateOf(false)
+        private set
+    var isUpdating by mutableStateOf(false)
+        private set
+    var isBatteryOptimizationIgnored by mutableStateOf(false)
+        private set
+
+    init {
+        refresh()
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            isPushEnabled = checkPushEnabled()
+            checkBatteryOptimization()
+        }
+    }
+
+    private fun checkBatteryOptimization() {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+        isBatteryOptimizationIgnored = pm?.isIgnoringBatteryOptimizations(context.packageName) ?: true
+    }
+
+    fun requestDisableBatteryOptimization() {
+        try {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = android.net.Uri.parse("package:${context.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            try {
+                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (_: Exception) {}
+        }
+    }
+
+    private suspend fun checkPushEnabled(): Boolean {
+        val hasPermission = NotificationManagerCompat.from(context).areNotificationsEnabled()
+        val isEnabledInKv = kvStorage.getBoolean("notifications_enabled") ?: true
+        return hasPermission && isEnabledInKv
+    }
+
+    fun onEnableRequested() {
+        val hasPermission = NotificationManagerCompat.from(context).areNotificationsEnabled()
+        if (!hasPermission) {
+            showRationale = true
+        } else {
+            enableNotifications()
+        }
+    }
+
+    fun enableNotifications() {
+        viewModelScope.launch {
+            kvStorage.set("notifications_enabled", true)
+            kvStorage.remove("pushNotificationsRejected")
+            chat.stoat.c2dm.DismodNotificationPoster.areNotificationsEnabled = true
+            isPushEnabled = true
+            showRationale = false
+            runCatching { subscribeIfNeeded() }
+        }
+    }
+
+    fun subscribeIfNeeded() {
+        if (isUpdating) return
+        isUpdating = true
+        try {
+            FirebaseMessaging.getInstance().token.addOnCompleteListener(
+                OnCompleteListener { task ->
+                    if (!task.isSuccessful) {
+                        isUpdating = false
+                        return@OnCompleteListener
+                    }
+                    val newToken = task.result
+                    viewModelScope.launch {
+                        try {
+                            val existingToken = kvStorage.get("fcmToken")
+                            if (existingToken != newToken) {
+                                subscribePush(auth = newToken)
+                                kvStorage.set("fcmToken", newToken)
+                            }
+                            kvStorage.remove("pushNotificationsRejected")
+                        } catch (e: Exception) {
+                            // subscribe failed, ignore
+                        } finally {
+                            isUpdating = false
+                        }
+                    }
+                }
+            )
+        } catch (e: Exception) {
+            isUpdating = false
+        }
+    }
+
+    fun disablePush() {
+        if (isUpdating) return
+        isUpdating = true
+        viewModelScope.launch {
+            try {
+                kvStorage.set("notifications_enabled", false)
+                kvStorage.set("pushNotificationsRejected", true)
+                chat.stoat.c2dm.DismodNotificationPoster.areNotificationsEnabled = false
+                val token = kvStorage.get("fcmToken")
+                if (token != null) {
+                    runCatching { unsubscribePush() }
+                    kvStorage.remove("fcmToken")
+                }
+                isPushEnabled = false
+            } finally {
+                isUpdating = false
+            }
+        }
+    }
+}
+
+@Composable
+fun NotificationsSettingsScreen(
+    navController: NavController,
+    viewModel: NotificationsSettingsScreenViewModel = koinViewModel()
+) {
+    val context = LocalContext.current
+
+    val askNotificationsPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.enableNotifications()
+        }
+    }
+
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.refresh()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    if (viewModel.showRationale) {
+        NotificationRationaleDialog(
+            onSelected = { accepted ->
+                viewModel.showRationale = false
+                if (accepted) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        askNotificationsPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        viewModel.enableNotifications()
+                    }
+                }
+            },
+            onDismiss = { viewModel.showRationale = false }
+        )
+    }
+
+    SettingsPage(
+        navController = navController,
+        title = { Text(stringResource(R.string.settings_notifications)) }
+    ) {
+        CenteredListItem(
+            headlineContent = { Text(stringResource(R.string.settings_notifications_push)) },
+            supportingContent = { Text(stringResource(R.string.settings_notifications_push_description)) },
+            trailingContent = {
+                Switch(
+                    checked = viewModel.isPushEnabled,
+                    onCheckedChange = null,
+                    enabled = !viewModel.isUpdating
+                )
+            },
+            modifier = Modifier
+                .semantics { role = Role.Switch }
+                .clickable(enabled = !viewModel.isUpdating) {
+                    if (viewModel.isPushEnabled) viewModel.disablePush()
+                    else viewModel.onEnableRequested()
+                }
+        )
+        CenteredListItem(
+            headlineContent = { Text("Instant Delivery (Battery Optimization)") },
+            supportingContent = {
+                Text(
+                    if (viewModel.isBatteryOptimizationIgnored)
+                        "Unrestricted · Notifications arrive instantly even when phone is locked"
+                    else
+                        "Optimized · Tap to set Unrestricted so Android does not delay background notifications"
+                )
+            },
+            trailingContent = {
+                if (viewModel.isBatteryOptimizationIgnored) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_check_24dp),
+                        contentDescription = null,
+                        tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_arrow_forward_24dp),
+                        contentDescription = null,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+            },
+            modifier = Modifier.clickable {
+                viewModel.requestDisableBatteryOptimization()
+            }
+        )
+        CenteredListItem(
+            headlineContent = { Text(stringResource(R.string.settings_notifications_system)) },
+            supportingContent = { Text(stringResource(R.string.settings_notifications_system_description)) },
+            trailingContent = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_arrow_forward_24dp),
+                    contentDescription = null,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            },
+            modifier = Modifier.clickable {
+                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                }
+                context.startActivity(intent)
+            }
+        )
+    }
+}

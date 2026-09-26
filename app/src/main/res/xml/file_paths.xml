@@ -1,0 +1,14 @@
+<paths>
+    <cache-path
+        path="attachments/"
+        name="attachments" />
+    <cache-path
+        path="usercards/"
+        name="usercards" />
+    <cache-path
+        path="updates/"
+        name="updates" />
+    <external-cache-path
+        path="updates/"
+        name="external_updates" />
+</paths>

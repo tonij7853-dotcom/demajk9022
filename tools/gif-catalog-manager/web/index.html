@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Dismod GIF Studio</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Dismod GIF Studio home">
+          <span class="brand-mark" aria-hidden="true">D</span>
+          <span>Dismod <span class="muted">GIF Studio</span></span>
+        </a>
+        <span class="local-pill"><span class="local-dot"></span> Private · this computer only</span>
+      </header>
+
+      <section class="intro">
+        <p class="eyebrow">OWNER TOOL</p>
+        <h1>Bring your GIFs into Dismod.</h1>
+        <p class="intro-copy">Paste a Discord, Tenor, Giphy, or direct image link. GIF Studio downloads and checks it, converts supported images into a clean animated GIF, then saves it in the catalog used by the app.</p>
+      </section>
+
+      <section class="workspace" aria-label="Import a GIF">
+        <form id="gif-form" class="panel import-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">NEW CATALOG ITEM</p>
+              <h2>Import from a link</h2>
+            </div>
+            <span class="step-number">01</span>
+          </div>
+
+          <label for="gif-url">GIF or image link</label>
+          <div class="input-with-icon">
+            <span aria-hidden="true">↗</span>
+            <input id="gif-url" name="url" type="url" inputmode="url" placeholder="https://…" autocomplete="url" required />
+          </div>
+          <p class="hint">Direct GIF links and public pages with a GIF preview work. Private or expired Discord links can’t be fetched.</p>
+
+          <div class="field-grid">
+            <div>
+              <label for="gif-title">Name</label>
+              <input id="gif-title" name="title" type="text" maxlength="80" placeholder="e.g. Happy dance" required />
+            </div>
+            <div>
+              <label for="gif-category">Category</label>
+              <input id="gif-category" name="category" type="text" maxlength="32" value="Reactions" />
+            </div>
+          </div>
+          <label for="gif-category-emoji">Group icon <span class="muted">· emoji shown in the picker</span></label>
+          <input id="gif-category-emoji" name="categoryEmoji" type="text" maxlength="8" value="🙂" />
+
+          <label for="gif-tags">Search tags <span class="muted">· comma separated</span></label>
+          <input id="gif-tags" name="tags" type="text" maxlength="300" placeholder="happy, celebrate, dance" />
+
+          <label class="permission-check">
+            <input id="rights-confirmed" type="checkbox" />
+            <span>I have permission to share this GIF with Dismod users.</span>
+          </label>
+
+          <div class="form-actions">
+            <button id="preview-button" class="button button-secondary" type="submit">
+              <span class="button-icon" aria-hidden="true">⌕</span>
+              Check &amp; preview
+            </button>
+            <button id="publish-button" class="button button-primary" type="button" disabled>
+              Add to Dismod <span aria-hidden="true">→</span>
+            </button>
+          </div>
+          <div id="form-status" class="status" role="status" aria-live="polite"></div>
+        </form>
+
+        <section class="panel preview-panel" aria-label="GIF preview">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">PREVIEW</p>
+              <h2 id="preview-heading">Your GIF will appear here</h2>
+            </div>
+            <span class="preview-badge">GIF</span>
+          </div>
+          <div id="preview-stage" class="preview-stage">
+            <div id="preview-empty" class="preview-empty">
+              <div class="preview-glyph" aria-hidden="true">GIF</div>
+              <p>Check a link to see it animate</p>
+              <span>We’ll verify the file before it enters the catalog.</span>
+            </div>
+            <img id="preview-image" alt="Imported GIF preview" hidden />
+            <div id="preview-loading" class="preview-loading" hidden><span class="spinner"></span><span>Checking the link…</span></div>
+          </div>
+          <div id="preview-details" class="preview-details" hidden></div>
+          <p class="preview-note">The source link is only used for importing. Dismod serves its own saved copy, so expiring source links won’t break the catalog.</p>
+        </section>
+      </section>
+
+      <section class="library-section">
+        <div class="library-heading">
+          <div>
+            <p class="eyebrow">SHARED WITH EVERYONE</p>
+            <h2>Your Dismod GIFs <span id="gif-count" class="count">0</span></h2>
+          </div>
+          <button id="refresh-button" class="button button-quiet" type="button"><span aria-hidden="true">↻</span> Refresh</button>
+        </div>
+        <div id="library-grid" class="library-grid"></div>
+        <p id="library-empty" class="library-empty" hidden>No GIFs yet. Import one above and it will appear here.</p>
+      </section>
+
+      <footer class="footer">
+        <span>GIF Studio runs on your computer and edits this repository’s catalog.</span>
+        <span>Push and merge catalog changes into <code>main</code> to publish them to app users.</span>
+      </footer>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+  </body>
+</html>

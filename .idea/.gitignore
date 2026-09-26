@@ -1,0 +1,12 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+/kotlinc.xml
+/appInsightsSettings.xml
+/other.xml
+# GitHub Copilot persisted chat sessions
+/copilot/chatSessions
+# User-specific files
+/deploymentTargetSelector.xml
+/misc.xml
+/androidTestResultsUserPreferences.xml
