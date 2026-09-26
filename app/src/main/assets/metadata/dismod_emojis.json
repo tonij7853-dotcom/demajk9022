@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "emojis": [
+    {
+      "id": "lechemoi-31ce42bc",
+      "name": "Lechemoi",
+      "shortcode": "lechemoi",
+      "category": "Reactions",
+      "categoryEmoji": "✨",
+      "filename": "emoji-lechemoi-31ce42bc.gif",
+      "format": "gif",
+      "mediaUrl": "https://adminofdismod.netlify.app/api/raw/emoji-lechemoi-31ce42bc.gif",
+      "previewUrl": "https://adminofdismod.netlify.app/api/raw/emoji-lechemoi-31ce42bc.gif",
+      "sourceUrl": "https://cdn3.emoji.gg/emojis/162404-lechemoi.gif",
+      "isAnimated": true,
+      "sha256": "31ce42bc53a5d3a28bb58fdbf1a9f4293059f9977da311d778b2e72cd9a8c999"
+    },
+    {
+      "id": "cat-328d180f",
+      "name": "Cat",
+      "shortcode": "cat",
+      "category": "Reactions",
+      "categoryEmoji": "✨",
+      "filename": "emoji-cat-328d180f.gif",
+      "format": "gif",
+      "mediaUrl": "https://adminofdismod.netlify.app/api/raw/emoji-cat-328d180f.gif",
+      "previewUrl": "https://adminofdismod.netlify.app/api/raw/emoji-cat-328d180f.gif",
+      "sourceUrl": "https://cdn3.emoji.gg/emojis/864704-cat.gif",
+      "isAnimated": true,
+      "sha256": "328d180fa5e590ef5585ff77a265c0dca939af56da3275705deb81e69710c75c"
+    },
+    {
+      "id": "scubaaa-a9532276",
+      "name": "Scubaaa",
+      "shortcode": "scubaaa",
+      "category": "Reactions",
+      "categoryEmoji": "✨",
+      "filename": "emoji-scubaaa-a9532276.gif",
+      "format": "gif",
+      "mediaUrl": "https://adminofdismod.netlify.app/api/raw/emoji-scubaaa-a9532276.gif",
+      "previewUrl": "https://adminofdismod.netlify.app/api/raw/emoji-scubaaa-a9532276.gif",
+      "sourceUrl": "https://cdn3.emoji.gg/emojis/53923-scubaaa.gif",
+      "isAnimated": true,
+      "sha256": "a95322762f49e19c903f3eb6c467353ee0ffee4ad7f96465bcb3b12ab83a0e6d"
+    }
+  ]
+}

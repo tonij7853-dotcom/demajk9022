@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#FFD97757</color>
+    <color name="background">#FF191817</color>
+    <color name="splashscreen_background">#FF191817</color>
+    <color name="foreground">#FFEDECE8</color>
+</resources>
