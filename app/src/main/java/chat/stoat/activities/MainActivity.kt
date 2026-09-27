@@ -117,6 +117,7 @@ import chat.stoat.screens.register.RegisterVerifyScreen
 import chat.stoat.screens.services.DiscoverScreen
 import chat.stoat.screens.settings.AccountSettingsScreen
 import chat.stoat.screens.settings.AppearanceSettingsScreen
+import chat.stoat.screens.settings.BadgesScreen
 import chat.stoat.screens.settings.ChatSettingsScreen
 import chat.stoat.screens.settings.DebugSettingsScreen
 import chat.stoat.screens.settings.ExperimentsSettingsScreen
@@ -250,6 +251,11 @@ class MainActivityViewModel(
 
     fun logOut() {
         viewModelScope.launch {
+            try {
+                chat.stoat.c2dm.DismodPushManager.unregister()
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to unregister push on logout", e)
+            }
             StoatAPI.resetSocketReady()
             kvStorage.remove("sessionToken")
             kvStorage.remove("sessionId")
@@ -757,6 +763,7 @@ fun AppEntrypoint(
                     composable("settings/debug") { DebugSettingsScreen(navController) }
                     composable("settings/experiments") { ExperimentsSettingsScreen(navController) }
                     composable("settings/language") { LanguagePickerSettingsScreen(navController) }
+                    composable("settings/badges") { BadgesScreen(navController) }
 
                     composable("settings/channel/{channelId}") { backStackEntry ->
                         val channelId = backStackEntry.arguments?.getString("channelId") ?: ""

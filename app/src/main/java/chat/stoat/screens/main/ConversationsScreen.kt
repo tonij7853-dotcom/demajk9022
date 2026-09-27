@@ -421,7 +421,7 @@ fun ConversationsScreen(navController: NavController) {
                             val previewText = when {
                                 lastMessage != null -> {
                                     val prefix = if (lastMessage.author == StoatAPI.selfId) "You: " else ""
-                                    val content = lastMessage.content?.takeIf { it.isNotBlank() } ?: "Sent an attachment"
+                                    val content = lastMessage.content?.takeIf { it.isNotBlank() } ?: "Sent a file"
                                     "$prefix$content"
                                 }
                                 else -> "Tap to start chatting"
@@ -501,6 +501,22 @@ fun ConversationsScreen(navController: NavController) {
                         modifier = Modifier.padding(horizontal = 16.dp),
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
                     )
+                }
+
+                // Footer: shown when there are conversations but no more to load
+                item(key = "no_more_conversations") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No other conversations yet",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
                 }
             }
         }

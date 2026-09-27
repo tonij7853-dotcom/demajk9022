@@ -83,6 +83,13 @@ enum class UserBadges(val value: Long) {
     EarlyAdopter(1L shl 8),
     ReservedRelevantJokeBadge1(1L shl 9),
     ReservedRelevantJokeBadge2(1L shl 10),
+    BugHunter(1L shl 11),
+    BetaTester(1L shl 12),
+    Verified(1L shl 13),
+    TopContributor(1L shl 14),
+    NightOwl(1L shl 15),
+    Booster(1L shl 16),
+    OGMember(1L shl 17),
 }
 
 infix fun Long?.has(flag: UserBadges): Boolean {

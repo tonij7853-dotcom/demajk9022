@@ -42,7 +42,11 @@ suspend fun fetchSelf(): User {
     StoatAPI.userCache[user.id!!] = user
     StoatAPI.selfId = user.id
     try {
-        KVStorage(StoatApplication.instance).set("selfId", user.id!!)
+        val kv = KVStorage(StoatApplication.instance)
+        kv.set("selfId", user.id!!)
+        val resolvedName = user.displayName ?: user.username ?: ""
+        if (resolvedName.isNotEmpty()) kv.set("selfName", resolvedName)
+        user.status?.presence?.let { kv.set("selfPresence", it) }
     } catch (_: Exception) {}
     StoatAPI.saveUsersToDisk()
     StoatAPI.scheduleSnapshotSave()

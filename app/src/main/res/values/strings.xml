@@ -525,6 +525,13 @@
     <string name="user_badge_early_adopter">Early Adopter</string>
     <string name="user_badge_reserved_relevant_joke_badge_1" translatable="false">sus</string>
     <string name="user_badge_reserved_relevant_joke_badge_2" translatable="false">It\'s Morbin Time</string>
+    <string name="user_badge_bug_hunter">Bug Hunter</string>
+    <string name="user_badge_beta_tester">Beta Tester</string>
+    <string name="user_badge_verified">Verified</string>
+    <string name="user_badge_top_contributor">Top Contributor</string>
+    <string name="user_badge_night_owl">Night Owl</string>
+    <string name="user_badge_booster">Booster</string>
+    <string name="user_badge_og_member">OG Member</string>
 
     <string name="add_server_sheet_step_0_title">Add Server</string>
     <string name="add_server_sheet_step_0_description">A server is where the magic happens. Chat with your friends, share memes, build communities, and more.</string>

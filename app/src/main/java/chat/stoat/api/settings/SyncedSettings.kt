@@ -55,10 +55,18 @@ object SyncedSettings {
 
     fun initFromStorage(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val json = prefs.getString("android_settings", null) ?: return
-        try {
-            _android.value = StoatJson.decodeFromString(AndroidSpecificSettings.serializer(), json)
-        } catch (_: Exception) {}
+        val json = prefs.getString("android_settings", null)
+        if (json != null) {
+            try {
+                _android.value = StoatJson.decodeFromString(AndroidSpecificSettings.serializer(), json)
+            } catch (_: Exception) {}
+        }
+        val notifJson = prefs.getString("notifications_settings", null)
+        if (notifJson != null) {
+            try {
+                _notifications.value = StoatJson.decodeFromString(NotificationSettings.serializer(), notifJson)
+            } catch (_: Exception) {}
+        }
     }
 
     private fun saveAndroidLocally(value: AndroidSpecificSettings) {
@@ -66,6 +74,13 @@ object SyncedSettings {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val json = StoatJson.encodeToString(AndroidSpecificSettings.serializer(), value)
         prefs.edit().putString("android_settings", json).apply()
+    }
+
+    private fun saveNotificationsLocally(value: NotificationSettings) {
+        val ctx = runCatching { chat.stoat.StoatApplication.instance }.getOrNull() ?: return
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val json = StoatJson.encodeToString(NotificationSettings.serializer(), value)
+        prefs.edit().putString("notifications_settings", json).apply()
     }
 
     suspend fun fetch(apiToken: String = StoatAPI.sessionToken) {
@@ -102,6 +117,7 @@ object SyncedSettings {
                 // This is to fix a quirk where the web client sometimes leaves sub-objects in one of the objects
                 // Because it is written in typescript and does what it wants
                 _notifications.value = parseNotificationSettings(it.value)
+                saveNotificationsLocally(_notifications.value)
             }
 
             settings["release-notes"]?.let {
@@ -162,6 +178,7 @@ object SyncedSettings {
 
     suspend fun updateNotifications(value: NotificationSettings) {
         _notifications.value = value
+        saveNotificationsLocally(value)
         setKey("notifications", StoatJson.encodeToString(NotificationSettings.serializer(), value))
     }
 
@@ -190,6 +207,7 @@ object SyncedSettings {
     suspend fun resetNotifications() {
         val default = NotificationSettings()
         _notifications.value = default
+        saveNotificationsLocally(default)
         setKey(
             "notifications",
             StoatJson.encodeToString(NotificationSettings.serializer(), default)

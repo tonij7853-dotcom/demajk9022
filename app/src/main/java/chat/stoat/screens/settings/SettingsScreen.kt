@@ -142,7 +142,6 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(2.dp))
                     SettingsListItem(
-                        last = true,
                         headlineContent = { Text(text = stringResource(id = R.string.settings_sessions)) },
                         leadingContent = {
                             SettingsIcon {
@@ -155,6 +154,22 @@ fun SettingsScreen(
                         modifier = Modifier
                             .testTag("settings_view_sessions")
                             .clickable { navController.navigate("settings/sessions") }
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    SettingsListItem(
+                        last = true,
+                        headlineContent = { Text(text = "Badges") },
+                        leadingContent = {
+                            SettingsIcon {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_badge_24dp),
+                                    contentDescription = null,
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .testTag("settings_view_badges")
+                            .clickable { navController.navigate("settings/badges") }
                     )
 
                     ListHeader {

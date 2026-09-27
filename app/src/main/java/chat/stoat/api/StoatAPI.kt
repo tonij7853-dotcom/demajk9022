@@ -231,6 +231,13 @@ object StoatAPI {
                 logcat(LogPriority.ERROR) { "Failed syncing unreads:\n${e.asLog()}" }
             }
         }
+        launch {
+            try {
+                chat.stoat.c2dm.DismodPushManager.syncSubscription()
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN) { "Push subscription sync failed during loginAs:\n${e.asLog()}" }
+            }
+        }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
