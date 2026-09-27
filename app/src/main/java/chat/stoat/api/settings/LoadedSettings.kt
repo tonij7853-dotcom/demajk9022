@@ -20,6 +20,13 @@ enum class MessageReplyStyle {
 enum class UserInterfaceFont {
     Default,
     GoogleSansFlex,
+    FragmentMono,
+    Newsreader,
+    Condensed,
+    Casual,
+    Cursive,
+    Monospace,
+    Serif
 }
 
 typealias SpecialEmbedSettings = AndroidSpecificSettingsSpecialEmbedSettings

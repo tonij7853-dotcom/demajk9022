@@ -17,11 +17,13 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,7 +33,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ToggleButton
@@ -45,6 +49,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -57,6 +62,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -74,8 +81,13 @@ import chat.stoat.composables.screens.settings.appearance.ColourChip
 import chat.stoat.composables.screens.settings.appearance.CornerRadiusPicker
 import chat.stoat.core.model.data.OverridableColourScheme
 import chat.stoat.sheets.ColourPickerSheet
+import chat.stoat.ui.theme.CasualFontFamily
+import chat.stoat.ui.theme.CondensedFontFamily
+import chat.stoat.ui.theme.CursiveFontFamily
+import chat.stoat.ui.theme.FragmentMono
 import chat.stoat.ui.theme.GoogleSansFlex
 import chat.stoat.ui.theme.Inter
+import chat.stoat.ui.theme.Newsreader
 import chat.stoat.ui.theme.Theme
 import chat.stoat.ui.theme.applyFromKeyValueMap
 import chat.stoat.ui.theme.getFieldByName
@@ -413,38 +425,78 @@ fun AppearanceSettingsScreen(
                     Text(stringResource(R.string.settings_appearance_typeface))
                 }
 
-                FlowRow(
-                    Modifier
-                        .padding(horizontal = 8.dp)
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    ToggleButton(
-                        checked = LoadedSettings.font == UserInterfaceFont.Default,
-                        onCheckedChange = { viewModel.saveNewFont(UserInterfaceFont.Default) },
-                        shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
-                        modifier = Modifier
-                            .semantics { role = Role.RadioButton }
-                            .weight(1f),
-                    ) {
-                        Text(
-                            stringResource(R.string.settings_appearance_typeface_default),
-                            fontFamily = Inter
-                        )
-                    }
-                    ToggleButton(
-                        checked = LoadedSettings.font == UserInterfaceFont.GoogleSansFlex,
-                        onCheckedChange = { viewModel.saveNewFont(UserInterfaceFont.GoogleSansFlex) },
-                        shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
-                        modifier = Modifier
-                            .semantics { role = Role.RadioButton }
-                            .weight(1f),
-                    ) {
-                        Text(
-                            stringResource(R.string.settings_appearance_typeface_google_sans_flex),
-                            fontFamily = GoogleSansFlex
-                        )
+                    val fontOptions = listOf(
+                        Triple(UserInterfaceFont.Default, R.string.settings_appearance_typeface_default, Inter),
+                        Triple(UserInterfaceFont.GoogleSansFlex, R.string.settings_appearance_typeface_google_sans_flex, GoogleSansFlex),
+                        Triple(UserInterfaceFont.FragmentMono, R.string.settings_appearance_typeface_fragment_mono, FragmentMono),
+                        Triple(UserInterfaceFont.Newsreader, R.string.settings_appearance_typeface_newsreader, Newsreader),
+                        Triple(UserInterfaceFont.Condensed, R.string.settings_appearance_typeface_condensed, CondensedFontFamily),
+                        Triple(UserInterfaceFont.Casual, R.string.settings_appearance_typeface_casual, CasualFontFamily),
+                        Triple(UserInterfaceFont.Cursive, R.string.settings_appearance_typeface_cursive, CursiveFontFamily),
+                        Triple(UserInterfaceFont.Monospace, R.string.settings_appearance_typeface_monospace, FontFamily.Monospace),
+                        Triple(UserInterfaceFont.Serif, R.string.settings_appearance_typeface_serif, FontFamily.Serif),
+                    )
+
+                    fontOptions.forEach { (fontOption, nameRes, fontFamily) ->
+                        val isSelected = LoadedSettings.font == fontOption
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { viewModel.saveNewFont(fontOption) }
+                                .testTag("set_font_${fontOption.name.lowercase()}"),
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                            },
+                            border = if (isSelected) {
+                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                            } else {
+                                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = stringResource(nameRes),
+                                        fontFamily = fontFamily,
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "The quick brown fox jumps over the lazy dog",
+                                        fontFamily = fontFamily,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = (if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant).copy(alpha = 0.8f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = { viewModel.saveNewFont(fontOption) }
+                                )
+                            }
+                        }
                     }
                 }
 

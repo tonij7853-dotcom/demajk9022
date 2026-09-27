@@ -202,6 +202,13 @@ fun StoatTheme(
     val typography = when (requestedUserInterfaceFont) {
         UserInterfaceFont.Default -> StoatTypography
         UserInterfaceFont.GoogleSansFlex -> GoogleTypography
+        UserInterfaceFont.FragmentMono -> FragmentMonoTypography
+        UserInterfaceFont.Newsreader -> NewsreaderTypography
+        UserInterfaceFont.Condensed -> CondensedTypography
+        UserInterfaceFont.Casual -> CasualTypography
+        UserInterfaceFont.Cursive -> CursiveTypography
+        UserInterfaceFont.Monospace -> MonospaceTypography
+        UserInterfaceFont.Serif -> SerifTypography
     }
 
     MaterialTheme(

@@ -428,6 +428,112 @@ val GoogleTypography = Typography(
     )
 )
 
+fun createCustomTypography(fontFamily: FontFamily, displayFont: FontFamily = fontFamily): Typography {
+    return Typography(
+        displayLarge = TextStyle(
+            fontFamily = displayFont,
+            fontWeight = FontWeight.Black,
+            fontSize = 57.sp,
+            lineHeight = 64.sp
+        ),
+        displayMedium = TextStyle(
+            fontFamily = displayFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 45.sp,
+            lineHeight = 52.sp
+        ),
+        displaySmall = TextStyle(
+            fontFamily = displayFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 36.sp,
+            lineHeight = 44.sp
+        ),
+        headlineLarge = TextStyle(
+            fontFamily = displayFont,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 32.sp,
+            lineHeight = 40.sp
+        ),
+        headlineMedium = TextStyle(
+            fontFamily = displayFont,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 28.sp,
+            lineHeight = 36.sp
+        ),
+        headlineSmall = TextStyle(
+            fontFamily = displayFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 24.sp,
+            lineHeight = 32.sp
+        ),
+        titleLarge = TextStyle(
+            fontFamily = displayFont,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 22.sp,
+            lineHeight = 28.sp
+        ),
+        titleMedium = TextStyle(
+            fontFamily = displayFont,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp,
+            lineHeight = 24.sp
+        ),
+        titleSmall = TextStyle(
+            fontFamily = displayFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            lineHeight = 20.sp
+        ),
+        labelLarge = TextStyle(
+            fontFamily = fontFamily,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp,
+            lineHeight = 20.sp
+        ),
+        labelMedium = TextStyle(
+            fontFamily = fontFamily,
+            fontWeight = FontWeight.Medium,
+            fontSize = 12.sp,
+            lineHeight = 16.sp
+        ),
+        labelSmall = TextStyle(
+            fontFamily = fontFamily,
+            fontWeight = FontWeight.Medium,
+            fontSize = 11.sp,
+            lineHeight = 16.sp
+        ),
+        bodyLarge = TextStyle(
+            fontFamily = fontFamily,
+            fontWeight = FontWeight.Normal,
+            fontSize = 16.sp,
+            lineHeight = 24.sp
+        ),
+        bodyMedium = TextStyle(
+            fontFamily = fontFamily,
+            fontWeight = FontWeight.Normal,
+            fontSize = 14.sp,
+            lineHeight = 21.sp
+        ),
+        bodySmall = TextStyle(
+            fontFamily = fontFamily,
+            fontWeight = FontWeight.Normal,
+            fontSize = 12.sp,
+            lineHeight = 18.sp
+        )
+    )
+}
+
+val FragmentMonoTypography = createCustomTypography(FragmentMono)
+val NewsreaderTypography = createCustomTypography(Newsreader)
+val CondensedFontFamily = FontFamily(Font(DeviceFontFamilyName("sans-serif-condensed")))
+val CondensedTypography = createCustomTypography(CondensedFontFamily)
+val CasualFontFamily = FontFamily(Font(DeviceFontFamilyName("casual")))
+val CasualTypography = createCustomTypography(CasualFontFamily)
+val CursiveFontFamily = FontFamily.Cursive
+val CursiveTypography = createCustomTypography(CursiveFontFamily)
+val MonospaceTypography = createCustomTypography(FontFamily.Monospace)
+val SerifTypography = createCustomTypography(FontFamily.Serif)
+
 fun getDefaultFont(): UserInterfaceFont {
     if (Build.MANUFACTURER == "Google" && Build.MODEL.startsWith("Pixel")) {
         return UserInterfaceFont.GoogleSansFlex
