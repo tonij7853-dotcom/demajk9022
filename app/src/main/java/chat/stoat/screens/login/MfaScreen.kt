@@ -145,7 +145,7 @@ fun MfaScreen(
 
     LaunchedEffect(viewModel.navigateToHome) {
         if (viewModel.navigateToHome) {
-            navController.navigate("chat") {
+            navController.navigate("main") {
                 popUpTo("login/greeting") { inclusive = true }
             }
         }

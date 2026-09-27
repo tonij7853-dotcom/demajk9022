@@ -320,7 +320,7 @@ fun CommunitiesScreen(navController: NavController) {
                         ) {
                             Text(
                                 text = currentServer.name ?: "Server",
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -332,9 +332,9 @@ fun CommunitiesScreen(navController: NavController) {
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.ic_more_vert_24dp),
-                                    contentDescription = "Server Options",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    painter = painterResource(R.drawable.ic_notifications_24dp),
+                                    contentDescription = "Notifications",
+                                    tint = MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }
@@ -374,18 +374,19 @@ fun CommunitiesScreen(navController: NavController) {
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             items(categorisedChannels) { item ->
                                 when (item) {
                                     is CategorisedChannelList.Category -> {
                                         Text(
-                                            text = item.category.title?.uppercase() ?: "CHANNELS",
+                                            text = item.category.title?.uppercase() ?: "TEXT CHANNELS",
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 4.dp)
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                            letterSpacing = 0.5.sp,
+                                            modifier = Modifier.padding(start = 12.dp, top = 14.dp, bottom = 4.dp)
                                         )
                                     }
 
@@ -396,11 +397,16 @@ fun CommunitiesScreen(navController: NavController) {
                                         val hasUnread = channel.lastMessageID?.let {
                                             StoatAPI.unreads.hasUnread(chId, it, serverId = currentServer.id)
                                         } ?: false
+                                        val isHighlighted = mentionCount > 0
 
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .clip(RoundedCornerShape(8.dp))
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(
+                                                    if (isHighlighted) MaterialTheme.colorScheme.surfaceContainerHigh
+                                                    else Color.Transparent
+                                                )
                                                 .clickable {
                                                     navController.navigate("main/conversation/${channel.id}")
                                                 }
@@ -417,8 +423,8 @@ fun CommunitiesScreen(navController: NavController) {
                                             Text(
                                                 text = channel.name ?: "channel",
                                                 style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = if (hasUnread || mentionCount > 0) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (hasUnread || mentionCount > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontWeight = if (isHighlighted || hasUnread) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isHighlighted || hasUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
                                                 modifier = Modifier.weight(1f)

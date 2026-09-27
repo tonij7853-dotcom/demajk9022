@@ -38,8 +38,8 @@ private fun ChannelIcon(
 ) {
     if (hasVoice || channelType == ChannelType.VoiceChannel) {
         Icon(
-            painter = painterResource(R.drawable.ic_grid_3x3_24dp),
-            contentDescription = stringResource(R.string.channel_text),
+            painter = painterResource(R.drawable.ic_volume_up_24dp),
+            contentDescription = stringResource(R.string.channel_voice),
             modifier = modifier
         )
         return
@@ -48,7 +48,7 @@ private fun ChannelIcon(
     when (channelType) {
         ChannelType.TextChannel -> {
             Icon(
-                painter = painterResource(R.drawable.ic_grid_3x3_24dp),
+                painter = painterResource(R.drawable.ic_tag_24dp),
                 contentDescription = stringResource(R.string.channel_text),
                 modifier = modifier
             )

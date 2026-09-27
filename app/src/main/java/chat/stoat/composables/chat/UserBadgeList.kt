@@ -87,7 +87,7 @@ fun badgeEntries(): List<BadgeEntry> = listOf(
         badge = UserBadges.Booster,
         label = "Booster",
         icon = { painterResource(R.drawable.user_badge_booster) },
-        tint = Color(0xFFFFC107)
+        tint = Color(0xFFE040FB)
     ),
     BadgeEntry(
         badge = UserBadges.OGMember,

@@ -218,7 +218,7 @@ fun LoginScreen(navController: NavController, viewModel: LoginViewModel = koinVi
             }
 
             "home" -> {
-                navController.navigate("chat") {
+                navController.navigate("main") {
                     popUpTo("login/greeting") { inclusive = true }
                 }
             }

@@ -488,6 +488,20 @@ fun ConversationsScreen(navController: NavController) {
                                                 .clip(CircleShape)
                                                 .background(MaterialTheme.colorScheme.primary)
                                         )
+                                    } else {
+                                        val timeStr = channel.lastMessageID?.let {
+                                            runCatching {
+                                                val ts = chat.stoat.api.internals.ULID.asTimestamp(it)
+                                                java.text.SimpleDateFormat("h:mm", java.util.Locale.getDefault()).format(java.util.Date(ts))
+                                            }.getOrNull()
+                                        }
+                                        if (timeStr != null) {
+                                            Text(
+                                                text = timeStr,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                 },
                                 modifier = Modifier.clickable {

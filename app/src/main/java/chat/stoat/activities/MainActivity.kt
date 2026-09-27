@@ -230,7 +230,7 @@ class MainActivityViewModel(
             StoatAPI.setSessionHeader(token)
             StoatAPI.setSessionId(id)
 
-            val destination = if (Experiments.usePolar.isEnabled) "main" else "chat"
+            val destination = "main"
             Log.d("MainActivity", "Session token present, navigating immediately to $destination")
             startWithDestination(destination)
 
@@ -626,7 +626,7 @@ fun AppEntrypoint(
                         OnboardingScreen(
                             navController,
                             onOnboardingComplete = {
-                                onUpdateNextDestination("chat")
+                                onUpdateNextDestination("main")
                                 navController.popBackStack(
                                     navController.graph.startDestinationRoute!!,
                                     inclusive = true

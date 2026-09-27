@@ -67,18 +67,18 @@ fun MainScreen(navController: NavController) {
                         }
                     },
                     label = {
-                        Text(stringResource(R.string.main_tab_communities))
+                        Text("Servers")
                     }
                 )
                 NavigationBarItem(
                     selected = currentTab == MainScreenTab.Conversations,
                     onClick = { currentTab = MainScreenTab.Conversations },
                     icon = {
-                        val forumIcon = painterResource(
+                        val chatIcon = painterResource(
                             if (currentTab == MainScreenTab.Conversations) {
-                                R.drawable.ic_forum_24dp__fill
+                                R.drawable.ic_chat_24dp
                             } else {
-                                R.drawable.ic_forum_24dp
+                                R.drawable.ic_chat_24dp
                             }
                         )
                         if (conversationsMentions > 0) {
@@ -93,19 +93,19 @@ fun MainScreen(navController: NavController) {
                                 }
                             ) {
                                 Icon(
-                                    painter = forumIcon,
+                                    painter = chatIcon,
                                     contentDescription = null,
                                 )
                             }
                         } else {
                             Icon(
-                                painter = forumIcon,
+                                painter = chatIcon,
                                 contentDescription = null,
                             )
                         }
                     },
                     label = {
-                        Text(stringResource(R.string.main_tab_conversations))
+                        Text("Chats")
                     }
                 )
                 NavigationBarItem(
@@ -113,18 +113,12 @@ fun MainScreen(navController: NavController) {
                     onClick = { currentTab = MainScreenTab.Overview },
                     icon = {
                         Icon(
-                            painter = painterResource(
-                                if (currentTab == MainScreenTab.Overview) {
-                                    R.drawable.ic_star_shine_24dp__fill
-                                } else {
-                                    R.drawable.ic_star_shine_24dp
-                                }
-                            ),
+                            painter = painterResource(R.drawable.ic_person_24dp),
                             contentDescription = null,
                         )
                     },
                     label = {
-                        Text(stringResource(R.string.main_tab_overview))
+                        Text("You")
                     }
                 )
             }
