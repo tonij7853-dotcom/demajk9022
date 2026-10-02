@@ -181,8 +181,7 @@ fun UserAvatar(
                 contentScale = ContentScale.Crop,
                 description = stringResource(id = R.string.avatar_alt, username),
                 allowAnimation = allowAnimation,
-                forceAnimate = isGifAvatar,
-                overrideSize = sizePx,
+                forceAnimate = true,
                 useTransition = false,
                 modifier = Modifier
                     .clip(shape)

@@ -57,21 +57,25 @@ fun RemoteImage(
     val localFile = remember(url) { LocalMediaCache.getFile(url) }
     val model: Any = localFile ?: url
 
-    // forceAnimate=true when caller knows the content_type is image/gif (e.g. from AutumnResource)
-    // Otherwise fall back to URL-based heuristic detection
-    val isGif = forceAnimate || remember(url, description, localFile) {
+    // Any avatar, banner, background, or gif URL is always treated as animatable
+    val isAnimatable = shouldAnimate && (
+        forceAnimate ||
+        url.contains("/avatars/", ignoreCase = true) ||
+        url.contains("/banners/", ignoreCase = true) ||
+        url.contains("/backgrounds/", ignoreCase = true) ||
+        url.contains("/icons/", ignoreCase = true) ||
         url.contains(".gif", ignoreCase = true) ||
         url.contains("/gifs/", ignoreCase = true) ||
         url.contains("image/gif", ignoreCase = true) ||
         description?.endsWith(".gif", ignoreCase = true) == true ||
         (localFile != null && localFile.name.endsWith(".gif", ignoreCase = true))
-    }
+    )
 
     val placeholderColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.35f)
 
-    // NEVER use CrossFade on GIFs because Glide wraps GifDrawable in TransitionDrawable,
+    // NEVER use CrossFade when animatable, because Glide wraps GifDrawable in TransitionDrawable,
     // which does not implement Animatable and causes the GIF to freeze on the first frame.
-    val effectiveTransition = if (!isGif && useTransition && overrideSize == 0 && localFile == null) CrossFade else null
+    val effectiveTransition = if (!isAnimatable && useTransition && overrideSize == 0 && localFile == null) CrossFade else null
 
     GlideImage(
         model = model,
@@ -83,7 +87,7 @@ fun RemoteImage(
             .then(if (height > 0) Modifier.height(pxAsDp(height)) else Modifier),
         transition = effectiveTransition,
         requestBuilderTransform = { rb ->
-            if (isGif) {
+            if (isAnimatable) {
                 // For animated GIFs: keep animation enabled, cache raw data, never thumbnail or downsample
                 rb.diskCacheStrategy(DiskCacheStrategy.DATA)
                     .format(DecodeFormat.PREFER_ARGB_8888)
