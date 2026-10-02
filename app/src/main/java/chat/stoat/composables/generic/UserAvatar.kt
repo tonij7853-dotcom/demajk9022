@@ -154,6 +154,12 @@ fun UserAvatar(
     val density = LocalDensity.current
     val sizePx = remember(density, size) { with(density) { (size.roundToPx() * 2).coerceAtLeast(192) } }
 
+    // Detect GIF from Autumn content_type — URL has no extension so URL heuristic misses it
+    val isGifAvatar = remember(avatar) {
+        avatar?.contentType?.equals("image/gif", ignoreCase = true) == true ||
+        avatar?.filename?.endsWith(".gif", ignoreCase = true) == true
+    }
+
     Box(
         modifier = modifier
             .size(size)
@@ -175,6 +181,7 @@ fun UserAvatar(
                 contentScale = ContentScale.Crop,
                 description = stringResource(id = R.string.avatar_alt, username),
                 allowAnimation = allowAnimation,
+                forceAnimate = isGifAvatar,
                 overrideSize = sizePx,
                 useTransition = false,
                 modifier = Modifier

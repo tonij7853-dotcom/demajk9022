@@ -1,31 +1,24 @@
 package chat.stoat.composables.generic
 
 import android.util.DisplayMetrics
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import chat.stoat.internals.LocalMediaCache
 import com.bumptech.glide.integration.compose.CrossFade
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
-
-import androidx.compose.runtime.compositionLocalOf
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.load.resource.gif.GifOptions
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
 
 val LocalAllowGifAnimation = compositionLocalOf { true }
@@ -41,6 +34,8 @@ fun RemoteImage(
     height: Int = 0,
     overrideSize: Int = 0,
     allowAnimation: Boolean = true,
+    /** Pass true when the content_type is known to be image/gif — bypasses URL-based detection */
+    forceAnimate: Boolean = false,
     useTransition: Boolean = true
 ) {
     val context = LocalContext.current
@@ -62,7 +57,9 @@ fun RemoteImage(
     val localFile = remember(url) { LocalMediaCache.getFile(url) }
     val model: Any = localFile ?: url
 
-    val isGif = remember(url, description, localFile) {
+    // forceAnimate=true when caller knows the content_type is image/gif (e.g. from AutumnResource)
+    // Otherwise fall back to URL-based heuristic detection
+    val isGif = forceAnimate || remember(url, description, localFile) {
         url.contains(".gif", ignoreCase = true) ||
         url.contains("/gifs/", ignoreCase = true) ||
         url.contains("image/gif", ignoreCase = true) ||

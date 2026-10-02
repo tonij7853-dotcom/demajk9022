@@ -322,7 +322,7 @@ fun OverviewScreen(
                                     username = displayName,
                                     userId = currentUser.id ?: "",
                                     avatar = currentUser.avatar,
-                                    size = 68.dp,
+                                    size = 96.dp,
                                     shape = CircleShape
                                 )
                                 // Green Online Status Dot
