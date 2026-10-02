@@ -58,7 +58,12 @@ jobs:
 
           VERSION_NAME="${TAG_NAME#v}"
           VERSION_CODE=$((1008000 + ${{ github.run_number }}))
-          CHANGELOG="${{ github.event.inputs.changelog || github.event.head_commit.message || 'Latest Dismod update' }}"
+          CHANGELOG_INPUT="${{ github.event.inputs.changelog }}"
+          if [[ -n "$CHANGELOG_INPUT" ]]; then
+            CHANGELOG="$CHANGELOG_INPUT"
+          else
+            CHANGELOG=$(git log -n 5 --no-merges --pretty=format:"• %s" | awk '{printf "%s\\n", $0}' | sed 's/"/\\"/g')
+          fi
 
           cat <<EOF > release-artifacts/version.json
           {
