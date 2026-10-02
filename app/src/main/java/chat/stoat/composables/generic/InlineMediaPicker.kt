@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -19,6 +20,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +45,8 @@ fun InlineMediaPicker(
     mimeType: String = "image/*",
     circular: Boolean = false,
     useAvatarCircularity: Boolean = false,
+    enableCrop: Boolean = true,
+    cropShape: CropShape = if (circular) CropShape.Circle else CropShape.WideBanner,
     onPick: (Uri) -> Unit,
     canRemove: Boolean = true,
     onRemove: () -> Unit = {},
@@ -55,6 +62,8 @@ fun InlineMediaPicker(
                 mimeType = mimeType,
                 circular = true,
                 useAvatarCircularity = useAvatarCircularity,
+                enableCrop = enableCrop,
+                cropShape = cropShape,
                 onPick = onPick
             )
 
@@ -75,11 +84,13 @@ fun InlineMediaPicker(
             }
         }
     } else {
-        Column(modifier) {
+        Column(modifier.fillMaxWidth()) {
             InlineMediaPickerMediaPicker(
                 currentModel = currentModel,
                 mimeType = mimeType,
                 circular = false,
+                enableCrop = enableCrop,
+                cropShape = cropShape,
                 onPick = onPick
             )
 
@@ -91,7 +102,7 @@ fun InlineMediaPicker(
                         onRemove()
                     },
                     enabled = (currentModel != null) && enabled,
-                    modifier = Modifier.width(480.dp)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_close_24dp),
@@ -117,22 +128,42 @@ fun InlineMediaPickerMediaPicker(
     mimeType: String = "image/*",
     circular: Boolean = false,
     useAvatarCircularity: Boolean = false,
+    enableCrop: Boolean = true,
+    cropShape: CropShape = if (circular) CropShape.Circle else CropShape.WideBanner,
     enabled: Boolean = true,
     onPick: (Uri) -> Unit
 ) {
+    var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
+
     val documentsUiLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            onPick(uri)
+            if (enableCrop) {
+                pendingCropUri = uri
+            } else {
+                onPick(uri)
+            }
         }
+    }
+
+    if (pendingCropUri != null) {
+        ImageCropperDialog(
+            imageUri = pendingCropUri!!,
+            cropShape = cropShape,
+            onDismissRequest = { pendingCropUri = null },
+            onCropSuccess = { cropped ->
+                pendingCropUri = null
+                onPick(cropped)
+            }
+        )
     }
 
     if (currentModel != null) {
         GlideImage(
             model = currentModel,
             contentDescription = stringResource(R.string.inline_media_picker_current_description),
-            contentScale = if (circular) ContentScale.Crop else ContentScale.FillWidth,
+            contentScale = ContentScale.Crop,
             modifier = if (circular) {
                 Modifier
                     .then(
@@ -146,9 +177,9 @@ fun InlineMediaPickerMediaPicker(
                     .height(82.dp)
             } else {
                 Modifier
-                    .clip(MaterialTheme.shapes.large)
-                    .width(480.dp)
-                    .height(140.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .fillMaxWidth()
+                    .height(160.dp)
             }.clickable {
                 if (enabled) documentsUiLauncher.launch(mimeType)
             },
@@ -169,9 +200,9 @@ fun InlineMediaPickerMediaPicker(
                     .height(82.dp)
             } else {
                 Modifier
-                    .clip(MaterialTheme.shapes.large)
-                    .width(480.dp)
-                    .height(140.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .fillMaxWidth()
+                    .height(160.dp)
             }
                 .clickable {
                     if (enabled) documentsUiLauncher.launch(mimeType)
@@ -185,12 +216,20 @@ fun InlineMediaPickerMediaPicker(
                     contentDescription = stringResource(R.string.inline_media_picker_no_media_placeholder)
                 )
             } else {
-                Text(
-                    text = stringResource(R.string.inline_media_picker_no_media_placeholder),
-                    style = MaterialTheme.typography.bodySmall.copy(
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_photo_library_24dp),
+                        contentDescription = null
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.inline_media_picker_no_media_placeholder),
+                        style = MaterialTheme.typography.labelMedium,
                         textAlign = TextAlign.Center
                     )
-                )
+                }
             }
         }
     }

@@ -65,6 +65,10 @@ import chat.stoat.composables.generic.NonIdealState
 import chat.stoat.composables.generic.RemoteImage
 import chat.stoat.composables.generic.UserAvatar
 import chat.stoat.composables.markdown.prose.ChatMarkdown
+import chat.stoat.api.internals.ResourceLocations
+import chat.stoat.composables.generic.AvatarViewerDialog
+import chat.stoat.core.model.schemas.UserBadges
+import chat.stoat.core.model.schemas.has
 import chat.stoat.core.model.data.STOAT_FILES
 import chat.stoat.core.model.schemas.AutumnResource
 import chat.stoat.core.model.schemas.Profile
@@ -95,6 +99,8 @@ fun OverviewScreen(
     var user by rememberSaveable { mutableStateOf<User?>(null) }
     var profile by remember { mutableStateOf<Profile?>(null) }
     var showUserCardSheet by rememberSaveable { mutableStateOf(false) }
+    var showFullAvatar by remember { mutableStateOf(false) }
+    var showFullBanner by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         val inCache = StoatAPI.userCache[StoatAPI.selfId]
@@ -132,6 +138,27 @@ fun OverviewScreen(
         ) {
             UserCardSheet(user = user)
         }
+    }
+
+    if (showFullAvatar && user != null) {
+        val avatarUrl = ResourceLocations.userAvatarOriginalUrl(user)
+        AvatarViewerDialog(
+            avatarUrl = avatarUrl,
+            username = user?.username ?: "user",
+            displayName = user?.displayName,
+            onDismissRequest = { showFullAvatar = false }
+        )
+    }
+
+    if (showFullBanner && profile?.background != null) {
+        val background = profile?.background
+        val bgUrl = "$STOAT_FILES/backgrounds/${if (background is AutumnResource) background.id else null}/${if (background is AutumnResource) background.filename else background}"
+        AvatarViewerDialog(
+            avatarUrl = bgUrl,
+            username = user?.username ?: "user",
+            displayName = "Banner",
+            onDismissRequest = { showFullBanner = false }
+        )
     }
 
     Scaffold(
@@ -221,10 +248,13 @@ fun OverviewScreen(
             ) {
                 Column {
                     // BANNER HEADER
+                    val isOwner = currentUser.badges.has(UserBadges.Founder)
+                    val isVerified = currentUser.badges.has(UserBadges.Verified)
+
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(130.dp)
+                            .height(160.dp)
                     ) {
                         val background = profile?.background
                         if (background != null) {
@@ -232,7 +262,9 @@ fun OverviewScreen(
                             RemoteImage(
                                 url = bgUrl,
                                 description = null,
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable { showFullBanner = true },
                                 contentScale = ContentScale.Crop
                             )
                         } else {
@@ -282,7 +314,10 @@ fun OverviewScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             // Circular Avatar (with green online presence dot)
-                            Box(contentAlignment = Alignment.BottomEnd) {
+                            Box(
+                                contentAlignment = Alignment.BottomEnd,
+                                modifier = Modifier.clickable { showFullAvatar = true }
+                            ) {
                                 UserAvatar(
                                     username = displayName,
                                     userId = currentUser.id ?: "",
@@ -342,12 +377,14 @@ fun OverviewScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-                            Icon(
-                                painter = painterResource(R.drawable.user_badge_verified),
-                                contentDescription = "Verified",
-                                tint = Color(0xFF00BCD4),
-                                modifier = Modifier.size(20.dp)
-                            )
+                            if (isVerified) {
+                                Icon(
+                                    painter = painterResource(R.drawable.user_badge_verified),
+                                    contentDescription = "Verified",
+                                    tint = Color(0xFF00BCD4),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
 
                         Text(
@@ -363,28 +400,30 @@ fun OverviewScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Owner Pill
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFF1E3A8A).copy(alpha = 0.5f)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            if (isOwner) {
+                                // Owner Pill
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFF1E3A8A).copy(alpha = 0.5f)
                                 ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.user_badge_founder_new),
-                                        contentDescription = null,
-                                        tint = Color(0xFF60A5FA),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        text = "Owner",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF93C5FD)
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.user_badge_founder_new),
+                                            contentDescription = null,
+                                            tint = Color(0xFF60A5FA),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "Owner",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF93C5FD)
+                                        )
+                                    }
                                 }
                             }
 

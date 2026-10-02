@@ -215,9 +215,8 @@ fun BadgeListEntry(badge: UserBadges) {
 
 @Composable
 fun UserBadgeList(badges: Long) {
-    val effectiveBadges = badges or UserBadges.Supporter.value
     val allEntries = badgeEntries()
-    val activeBadges = allEntries.filter { effectiveBadges has it.badge }
+    val activeBadges = allEntries.filter { badges has it.badge }
 
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -231,9 +230,8 @@ fun UserBadgeList(badges: Long) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun UserBadgeRow(badges: Long) {
-    val effectiveBadges = badges or UserBadges.Supporter.value
     val allEntries = badgeEntries()
-    val activeBadges = allEntries.filter { effectiveBadges has it.badge }
+    val activeBadges = allEntries.filter { badges has it.badge }
 
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),

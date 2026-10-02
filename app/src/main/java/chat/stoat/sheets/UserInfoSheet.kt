@@ -211,8 +211,10 @@ fun UserInfoSheet(
 
     val currentUser = user!!
     val isSelf = currentUser.id == StoatAPI.selfId
-    val isOwner = isSelf || (currentUser.badges.has(UserBadges.Founder))
-    val isVerified = isSelf || (currentUser.badges.has(UserBadges.Verified))
+    val isServerOwner = server != null && server.owner == currentUser.id
+    val isFounder = currentUser.badges.has(UserBadges.Founder)
+    val isOwner = isServerOwner || isFounder
+    val isVerified = currentUser.badges.has(UserBadges.Verified)
 
     val effectiveNickname = member?.nickname?.takeIf { it.isNotBlank() }
         ?: CustomNicknames.getNickname(currentUser.id ?: "")
@@ -260,7 +262,7 @@ fun UserInfoSheet(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(130.dp)
+                        .height(160.dp)
                 ) {
                     val background = profile?.background
                     if (background != null) {
@@ -615,7 +617,7 @@ fun UserInfoSheet(
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Text(
-                                        text = "Owner",
+                                        text = if (isServerOwner) "Server Owner" else "Owner",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.SemiBold,
                                         color = Color(0xFF93C5FD)

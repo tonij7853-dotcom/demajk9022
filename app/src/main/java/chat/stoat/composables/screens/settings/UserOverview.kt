@@ -148,7 +148,7 @@ fun RawUserOverview(
                 modifier = Modifier
                     .height(cardHeight)
                     .fillMaxWidth(),
-                contentScale = ContentScale.FillWidth
+                contentScale = ContentScale.Crop
             )
 
             Box(
