@@ -4,8 +4,8 @@ import java.io.OutputStream
 
 /**
  * Encodes animated GIF files from a sequence of Bitmap frames.
- * Based on the classic Kevin Weiner / J.M.G. Elliott encoder (public domain).
- * Adapted for Android/Kotlin.
+ * Based on the classic Kevin Weiner / Anthony Dekker / J.M.G. Elliott encoder (public domain).
+ * Fully spec-compliant GIF89a implementation with local color tables and Netscape looping.
  */
 class AnimatedGifEncoder {
     private var width = 0
@@ -14,11 +14,12 @@ class AnimatedGifEncoder {
     private var transIndex = 0
     private var repeat = 0
     private var delay = 10
+    private var sampleFactor = 10
     private var started = false
     private var out: OutputStream? = null
     private var pixels: ByteArray? = null
     private var indexedPixels: ByteArray? = null
-    private var colorDepth = 0
+    private var colorDepth = 8
     private var colorTab: ByteArray? = null
     private var usedEntry = BooleanArray(256)
     private var palSize = 7
@@ -27,6 +28,7 @@ class AnimatedGifEncoder {
     fun setDelay(ms: Int) { delay = ms.coerceAtLeast(20) / 10 }
     fun setRepeat(iter: Int) { repeat = iter }
     fun setTransparent(color: Int) { transparent = color }
+    fun setSample(sample: Int) { sampleFactor = sample.coerceIn(1, 30) }
 
     fun start(os: OutputStream): Boolean {
         return try {
@@ -40,12 +42,21 @@ class AnimatedGifEncoder {
 
     fun addFrame(bitmap: android.graphics.Bitmap): Boolean {
         if (!started || bitmap.isRecycled) return false
+        val w = bitmap.width
+        val h = bitmap.height
+        val pix = IntArray(w * h)
+        bitmap.getPixels(pix, 0, w, 0, 0, w, h)
+        return addFramePixels(w, h, pix)
+    }
+
+    fun addFramePixels(w: Int, h: Int, pix: IntArray): Boolean {
+        if (!started) return false
         return try {
             if (width == 0) {
-                width = bitmap.width
-                height = bitmap.height
+                width = w
+                height = h
             }
-            getImagePixels(bitmap)
+            getImagePixels(w, h, pix)
             analyzePixels()
             if (firstFrame) {
                 writeLSD()
@@ -60,7 +71,10 @@ class AnimatedGifEncoder {
             writePixels()
             firstFrame = false
             true
-        } catch (e: Exception) { false }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
     }
 
     fun finish(): Boolean {
@@ -73,17 +87,14 @@ class AnimatedGifEncoder {
         } catch (e: Exception) { false }
     }
 
-    private fun getImagePixels(bitmap: android.graphics.Bitmap) {
-        val w = bitmap.width
-        val h = bitmap.height
-        val pix = IntArray(w * h)
-        bitmap.getPixels(pix, 0, w, 0, 0, w, h)
+    private fun getImagePixels(w: Int, h: Int, pix: IntArray) {
         pixels = ByteArray(pix.size * 3)
         var idx = 0
         for (p in pix) {
-            pixels!![idx++] = ((p shr 16) and 0xFF).toByte()
-            pixels!![idx++] = ((p shr 8) and 0xFF).toByte()
-            pixels!![idx++] = (p and 0xFF).toByte()
+            // Store B, G, R to match NeuQuant color order
+            pixels!![idx++] = (p and 0xFF).toByte()         // Blue
+            pixels!![idx++] = ((p shr 8) and 0xFF).toByte()  // Green
+            pixels!![idx++] = ((p shr 16) and 0xFF).toByte() // Red
         }
     }
 
@@ -91,10 +102,11 @@ class AnimatedGifEncoder {
         val len = pixels!!.size
         val nPix = len / 3
         indexedPixels = ByteArray(nPix)
-        val nq = NeuQuant(pixels!!, len, 10)
+        val nq = NeuQuant(pixels!!, len, sampleFactor)
         colorTab = nq.process()
-        // build reverse map
-        val colorMap = HashMap<Int, Int>()
+
+        // Build reverse lookup table for fast exact color matching
+        val colorMap = HashMap<Int, Int>(256)
         var k = 0
         for (i in 0 until 256) {
             val r = colorTab!![k++].toInt() and 0xFF
@@ -102,16 +114,17 @@ class AnimatedGifEncoder {
             val b = colorTab!![k++].toInt() and 0xFF
             colorMap[(r shl 16) or (g shl 8) or b] = i
         }
+
         transIndex = 0
         var idx2 = 0
         var pi = 0
         usedEntry.fill(false)
         for (i in 0 until nPix) {
-            val r = pixels!![pi++].toInt() and 0xFF
-            val g = pixels!![pi++].toInt() and 0xFF
             val b = pixels!![pi++].toInt() and 0xFF
+            val g = pixels!![pi++].toInt() and 0xFF
+            val r = pixels!![pi++].toInt() and 0xFF
             val rgb = (r shl 16) or (g shl 8) or b
-            val index = colorMap[rgb] ?: nq.map(r, g, b)
+            val index = colorMap[rgb] ?: nq.map(b, g, r)
             usedEntry[index] = true
             indexedPixels!![idx2++] = index.toByte()
         }
@@ -122,7 +135,7 @@ class AnimatedGifEncoder {
     private fun writeLSD() {
         writeShort(width)
         writeShort(height)
-        out!!.write(0x80 or 0x70 or palSize)
+        out!!.write(0x80 or 0x70 or palSize) // Global Color Table Flag = 1, 8 bits/pixel, 256 colors
         out!!.write(0)
         out!!.write(0)
     }
@@ -144,9 +157,10 @@ class AnimatedGifEncoder {
     private fun writeGraphicCtrlExt() {
         out!!.write(0x21); out!!.write(0xF9); out!!.write(4)
         val transp = if (transparent >= 0) 1 else 0
-        out!!.write(0 or (0 shl 2) or transp)
+        val disp = 2 // Disposal 2: Restore to background color between frames
+        out!!.write(0 or (disp shl 2) or transp)
         writeShort(delay)
-        out!!.write(transIndex)
+        out!!.write(if (transparent >= 0) transIndex else 0)
         out!!.write(0)
     }
 
@@ -155,9 +169,9 @@ class AnimatedGifEncoder {
         writeShort(0); writeShort(0)
         writeShort(width); writeShort(height)
         if (firstFrame) {
-            out!!.write(0)
+            out!!.write(0) // Frame 0 uses Global Color Table
         } else {
-            out!!.write(0x80 or palSize)
+            out!!.write(0x80 or palSize) // Frame 1+ uses Local Color Table
         }
     }
 
@@ -170,7 +184,7 @@ class AnimatedGifEncoder {
     private fun writeString(s: String) { s.forEach { out!!.write(it.code) } }
 }
 
-// ── Minimal NeuQuant neural-net colour quantiser ───────────────────────────
+// ── NeuQuant neural-net colour quantiser ──────────────────────────────────
 // (c) 1994 Anthony Dekker – public domain
 class NeuQuant(private val thepicture: ByteArray, private val lengthcount: Int, private val samplefac: Int) {
     private val netsize = 256; private val maxnetpos = netsize - 1
@@ -193,7 +207,11 @@ class NeuQuant(private val thepicture: ByteArray, private val lengthcount: Int, 
 
     private fun colorMap(): ByteArray {
         val map = ByteArray(3 * netsize); var k = 0
-        for (i in 0 until netsize) { map[k++] = network[i][2].toByte(); map[k++] = network[i][1].toByte(); map[k++] = network[i][0].toByte() }
+        for (i in 0 until netsize) {
+            map[k++] = network[i][2].toByte() // Red
+            map[k++] = network[i][1].toByte() // Green
+            map[k++] = network[i][0].toByte() // Blue
+        }
         return map
     }
 
@@ -209,34 +227,151 @@ class NeuQuant(private val thepicture: ByteArray, private val lengthcount: Int, 
     }
 
     private fun learn() {
-        val alphadec = 30 + ((samplefac - 1) / 3); val lengthcount2 = if (lengthcount < 3) 3 else lengthcount; val samplepixels = lengthcount2 / (3 * samplefac)
-        var delta = samplepixels / ncycles; if (delta < 1) delta = 1
-        var alpha = initalpha; var radius = initradius
-        var rad = radius shr radiusbiasshift; if (rad <= 1) rad = 0
+        val alphadec = 30 + ((samplefac - 1) / 3)
+        val lengthcount2 = if (lengthcount < 3) 3 else lengthcount
+        val samplepixels = lengthcount2 / (3 * samplefac)
+        var delta = samplepixels / ncycles
+        if (delta < 1) delta = 1
+        var alpha = initalpha
+        var radius = initradius
+        var rad = radius shr radiusbiasshift
+        if (rad <= 1) rad = 0
         for (i in 0 until rad) radpower[i] = alpha * (((rad * rad - i * i) * radbias) / (rad * rad))
-        val step = when { lengthcount2 % 499 != 0 -> 499 * 3; lengthcount2 % 491 != 0 -> 491 * 3; else -> 3 }
-        var pos = 0; var i2 = 0
+
+        val step = when {
+            lengthcount2 < 499 * 3 -> 3
+            lengthcount2 % 499 != 0 -> 499 * 3
+            lengthcount2 % 491 != 0 -> 491 * 3
+            lengthcount2 % 487 != 0 -> 487 * 3
+            else -> 503 * 3
+        }
+
+        var pos = 0
+        var i2 = 0
         while (i2 < samplepixels) {
-            val b = thepicture[pos].toInt() and 0xFF; val g = thepicture[pos + 1].toInt() and 0xFF; val r = thepicture[pos + 2].toInt() and 0xFF
-            val j = contest(b, g, r); alterSingle(alpha, j, b, g, r); if (rad != 0) alterNeigh(rad, j, b, g, r)
-            pos += step; if (pos >= lengthcount2) pos -= lengthcount2
-            i2++; if (i2 % delta == 0) { alpha -= alpha / alphadec; radius -= radius / radiusdec; rad = radius shr radiusbiasshift; if (rad <= 1) rad = 0; for (k in 0 until rad) radpower[k] = alpha * (((rad * rad - k * k) * radbias) / (rad * rad)) }
+            val b = thepicture[pos].toInt() and 0xFF
+            val g = thepicture[pos + 1].toInt() and 0xFF
+            val r = thepicture[pos + 2].toInt() and 0xFF
+            val j = contest(b, g, r)
+            alterSingle(alpha, j, b, g, r)
+            if (rad != 0) alterNeigh(rad, j, b, g, r)
+            pos = (pos + step) % lengthcount2
+            pos -= pos % 3
+            i2++
+            if (i2 % delta == 0) {
+                alpha -= alpha / alphadec
+                radius -= radius / radiusdec
+                rad = radius shr radiusbiasshift
+                if (rad <= 1) rad = 0
+                for (k in 0 until rad) radpower[k] = alpha * (((rad * rad - k * k) * radbias) / (rad * rad))
+            }
         }
     }
 
-    private fun alterSingle(alpha: Int, i: Int, b: Int, g: Int, r: Int) { val n = network[i]; n[0] -= alpha * (n[0] - b) / initalpha; n[1] -= alpha * (n[1] - g) / initalpha; n[2] -= alpha * (n[2] - r) / initalpha }
-    private fun alterNeigh(rad: Int, i: Int, b: Int, g: Int, r: Int) { val lo = maxOf(i - rad, -1); val hi = minOf(i + rad, netsize); var j = i + 1; var k = i - 1; var m = 1; while (j < hi || k > lo) { val a = radpower[m++]; if (j < hi) { val p = network[j++]; p[0] -= a * (p[0] - b) / alpharadbias; p[1] -= a * (p[1] - g) / alpharadbias; p[2] -= a * (p[2] - r) / alpharadbias }; if (k > lo) { val p = network[k--]; p[0] -= a * (p[0] - b) / alpharadbias; p[1] -= a * (p[1] - g) / alpharadbias; p[2] -= a * (p[2] - r) / alpharadbias } } }
-    private fun contest(b: Int, g: Int, r: Int): Int { var bestd = Int.MAX_VALUE; var besti = -1; for (i in 0 until netsize) { val n = network[i]; val dist = Math.abs(n[0] - b) + Math.abs(n[1] - g) + Math.abs(n[2] - r); if (dist < bestd) { bestd = dist; besti = i }; val dist2 = dist - bias[i] / intbias; if (dist2 < bestd) { bestd = dist2; besti = i }; freq[i] -= freq[i] / 1024; bias[i] += freq[i] * gamma / beta }; freq[besti] += initalpha; bias[besti] -= betagamma; return besti }
+    private fun alterSingle(alpha: Int, i: Int, b: Int, g: Int, r: Int) {
+        val n = network[i]
+        n[0] -= alpha * (n[0] - (b shl netbiasshift)) / initalpha
+        n[1] -= alpha * (n[1] - (g shl netbiasshift)) / initalpha
+        n[2] -= alpha * (n[2] - (r shl netbiasshift)) / initalpha
+    }
+
+    private fun alterNeigh(rad: Int, i: Int, b: Int, g: Int, r: Int) {
+        val lo = maxOf(i - rad, -1)
+        val hi = minOf(i + rad, netsize)
+        var j = i + 1
+        var k = i - 1
+        var m = 1
+        val bs = b shl netbiasshift
+        val gs = g shl netbiasshift
+        val rs = r shl netbiasshift
+        while (j < hi || k > lo) {
+            val a = radpower[m++]
+            if (j < hi) {
+                val p = network[j++]
+                p[0] -= a * (p[0] - bs) / alpharadbias
+                p[1] -= a * (p[1] - gs) / alpharadbias
+                p[2] -= a * (p[2] - rs) / alpharadbias
+            }
+            if (k > lo) {
+                val p = network[k--]
+                p[0] -= a * (p[0] - bs) / alpharadbias
+                p[1] -= a * (p[1] - gs) / alpharadbias
+                p[2] -= a * (p[2] - rs) / alpharadbias
+            }
+        }
+    }
+
+    private fun contest(b: Int, g: Int, r: Int): Int {
+        var bestd = Int.MAX_VALUE
+        var besti = -1
+        val bs = b shl netbiasshift
+        val gs = g shl netbiasshift
+        val rs = r shl netbiasshift
+        for (i in 0 until netsize) {
+            val n = network[i]
+            val dist = Math.abs(n[0] - bs) + Math.abs(n[1] - gs) + Math.abs(n[2] - rs)
+            if (dist < bestd) {
+                bestd = dist
+                besti = i
+            }
+            val dist2 = dist - bias[i] / intbias
+            if (dist2 < bestd) {
+                bestd = dist2
+                besti = i
+            }
+            freq[i] -= freq[i] / 1024
+            bias[i] += freq[i] * gamma / beta
+        }
+        freq[besti] += initalpha
+        bias[besti] -= betagamma
+        return besti
+    }
     private fun unbiasnet() { for (i in 0 until netsize) { network[i][0] = network[i][0] shr netbiasshift; network[i][1] = network[i][1] shr netbiasshift; network[i][2] = network[i][2] shr netbiasshift; network[i][3] = i } }
-    fun map(r: Int, g: Int, b: Int): Int { var bestd = 1000; var best = -1; var i = netindex[g]; var j = i - 1; while (i < netsize || j >= 0) { if (i < netsize) { val p = network[i]; val dist = Math.abs(p[1] - g); if (dist >= bestd) { i = netsize } else { i++; val dist2 = dist + Math.abs(p[0] - b) + Math.abs(p[2] - r); if (dist2 < bestd) { bestd = dist2; best = p[3] } } }; if (j >= 0) { val p = network[j]; val dist = Math.abs(p[1] - g); if (dist >= bestd) { j = -1 } else { j--; val dist2 = dist + Math.abs(p[0] - b) + Math.abs(p[2] - r); if (dist2 < bestd) { bestd = dist2; best = p[3] } } } }; return best }
+    fun map(b: Int, g: Int, r: Int): Int {
+        var bestd = 1000
+        var best = -1
+        var i = netindex[g]
+        var j = i - 1
+        while (i < netsize || j >= 0) {
+            if (i < netsize) {
+                val p = network[i]
+                val dist = Math.abs(p[1] - g)
+                if (dist >= bestd) {
+                    i = netsize
+                } else {
+                    i++
+                    val dist2 = dist + Math.abs(p[0] - b) + Math.abs(p[2] - r)
+                    if (dist2 < bestd) {
+                        bestd = dist2
+                        best = p[3]
+                    }
+                }
+            }
+            if (j >= 0) {
+                val p = network[j]
+                val dist = Math.abs(p[1] - g)
+                if (dist >= bestd) {
+                    j = -1
+                } else {
+                    j--
+                    val dist2 = dist + Math.abs(p[0] - b) + Math.abs(p[2] - r)
+                    if (dist2 < bestd) {
+                        bestd = dist2
+                        best = p[3]
+                    }
+                }
+            }
+        }
+        return best
+    }
 }
 
-// ── Minimal LZW Encoder ────────────────────────────────────────────────────
+// ── LZW Encoder ────────────────────────────────────────────────────────────
 class LZWEncoder(private val imgW: Int, private val imgH: Int, private val pixAry: ByteArray, private val initCodeSize: Int) {
     private val EOF = -1; private val BITS = 12; private val HSIZE = 5003
     private var n_bits = 0; private var maxbits = BITS; private var maxcode = 0; private var maxmaxcode = 1 shl BITS
     private val htab = IntArray(HSIZE); private val codetab = IntArray(HSIZE)
-    private var free_ent = 0; private var eofile = false; private var clear_flg = false
+    private var free_ent = 0; private var clear_flg = false
     private var cur_accum = 0; private var cur_bits = 0
     private val masks = intArrayOf(0x0000, 0x0001, 0x0003, 0x0007, 0x000F, 0x001F, 0x003F, 0x007F, 0x00FF, 0x01FF, 0x03FF, 0x07FF, 0x0FFF, 0x1FFF, 0x3FFF, 0x7FFF, 0xFFFF)
     private var clear_code = 0; private var eof_code = 0; private var remaining = 0; private var curPixel = 0
@@ -274,7 +409,13 @@ class LZWEncoder(private val imgW: Int, private val imgH: Int, private val pixAr
             output(ent, outs); ent = c
             if (free_ent < maxmaxcode) { codetab[i] = free_ent++; htab[i] = fcode } else clearTable(outs)
         }
-        output(ent, outs); output(eof_code, outs); flushPacket(outs)
+        output(ent, outs)
+        output(eof_code, outs)
+        // Flush any remaining bits in the accumulator
+        if (cur_bits > 0) {
+            accum[a_count++] = (cur_accum and 0xFF).toByte()
+        }
+        flushPacket(outs)
     }
 
     private fun clearTable(outs: OutputStream) { resetCodeTable(HSIZE); free_ent = clear_code + 2; clear_flg = true; output(clear_code, outs) }

@@ -762,7 +762,8 @@ fun ProfileSettingsScreen(
                     onDismissRequest = { showGifPickerForAvatar = false },
                     onGifSelected = { uri ->
                         showGifPickerForAvatar = false
-                        viewModel.pfpModel = uri
+                        viewModel.pendingPfpUri = uri
+                        viewModel.pfpModel = uri.toString()
                         viewModel.saveNewPfp()
                     }
                 )
@@ -773,7 +774,8 @@ fun ProfileSettingsScreen(
                     onDismissRequest = { showGifPickerForBanner = false },
                     onGifSelected = { uri ->
                         showGifPickerForBanner = false
-                        viewModel.backgroundModel = uri
+                        viewModel.pendingBannerUri = uri
+                        viewModel.backgroundModel = uri.toString()
                         viewModel.saveNewBackground()
                     }
                 )

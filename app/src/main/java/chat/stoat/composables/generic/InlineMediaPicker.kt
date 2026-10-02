@@ -185,6 +185,10 @@ fun InlineMediaPickerMediaPicker(
             model = currentModel,
             contentDescription = stringResource(R.string.inline_media_picker_current_description),
             contentScale = ContentScale.Crop,
+            requestBuilderTransform = { rb ->
+                rb.diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE)
+                    .skipMemoryCache(true)
+            },
             modifier = if (circular) {
                 Modifier
                     .then(

@@ -631,7 +631,7 @@ private suspend fun performGifCrop(
         override fun obtain(width: Int, height: Int, config: Bitmap.Config): Bitmap =
             Bitmap.createBitmap(width, height, config)
         override fun release(bitmap: Bitmap) {
-            if (!bitmap.isRecycled) bitmap.recycle()
+            // Do NOT recycle: StandardGifDecoder reuses previousImage across frames for disposal/blending
         }
         override fun obtainByteArray(size: Int): ByteArray = ByteArray(size)
         override fun release(bytes: ByteArray) {}
@@ -688,6 +688,7 @@ private suspend fun performGifCrop(
     val encoder = AnimatedGifEncoder()
     encoder.start(outStream)
     encoder.setRepeat(0)
+    encoder.setSample(16)
 
     val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG)
 
