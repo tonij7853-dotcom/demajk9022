@@ -124,6 +124,7 @@ import chat.stoat.screens.settings.ExperimentsSettingsScreen
 import chat.stoat.screens.settings.LanguagePickerSettingsScreen
 import chat.stoat.screens.settings.MfaSettingsScreen
 import chat.stoat.screens.settings.NotificationsSettingsScreen
+import chat.stoat.screens.settings.OwnerPanelScreen
 import chat.stoat.screens.settings.ProfileSettingsScreen
 import chat.stoat.screens.settings.SessionSettingsScreen
 import chat.stoat.screens.settings.SettingsScreen
@@ -764,6 +765,7 @@ fun AppEntrypoint(
                     composable("settings/experiments") { ExperimentsSettingsScreen(navController) }
                     composable("settings/language") { LanguagePickerSettingsScreen(navController) }
                     composable("settings/badges") { BadgesScreen(navController) }
+                    composable("settings/owner-panel") { OwnerPanelScreen(navController) }
 
                     composable("settings/channel/{channelId}") { backStackEntry ->
                         val channelId = backStackEntry.arguments?.getString("channelId") ?: ""

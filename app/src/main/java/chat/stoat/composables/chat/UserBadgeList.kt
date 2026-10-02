@@ -14,22 +14,33 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import chat.stoat.R
+import chat.stoat.api.settings.CustomBadge
+import chat.stoat.api.settings.CustomBadgeStore
 import chat.stoat.core.model.schemas.UserBadges
 import chat.stoat.core.model.schemas.has
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 // Data class representing a badge entry for the grid display
 data class BadgeEntry(
@@ -95,7 +106,6 @@ fun badgeEntries(): List<BadgeEntry> = listOf(
         icon = { painterResource(R.drawable.user_badge_og_member) },
         tint = Color(0xFFFF9800)
     ),
-    // Additional legacy badges mapped to better display
     BadgeEntry(
         badge = UserBadges.Developer,
         label = "Developer",
@@ -140,6 +150,20 @@ fun badgeEntries(): List<BadgeEntry> = listOf(
     ),
 )
 
+// ─── Custom badge display colours ─────────────────────────────────────────────
+val customBadgeColor: Map<CustomBadge, Color> = mapOf(
+    CustomBadge.Slut      to Color(0xFFE91E63),
+    CustomBadge.Homie     to Color(0xFF795548),
+    CustomBadge.Simp      to Color(0xFFFF4081),
+    CustomBadge.Gigachad  to Color(0xFF1565C0),
+    CustomBadge.Clown     to Color(0xFFFF6F00),
+    CustomBadge.Goat      to Color(0xFF2E7D32),
+    CustomBadge.Rat       to Color(0xFF6D4C41),
+    CustomBadge.Nerd      to Color(0xFF1976D2),
+    CustomBadge.King      to Color(0xFFFFB300),
+    CustomBadge.Cursed    to Color(0xFF6A1B9A),
+)
+
 @Composable
 fun BadgeGridItem(
     label: String,
@@ -179,8 +203,43 @@ fun BadgeGridItem(
     }
 }
 
-
-
+/** Compact emoji-based display for a custom badge chip. */
+@Composable
+private fun CustomBadgeChip(badge: CustomBadge) {
+    val tint = customBadgeColor[badge] ?: Color(0xFFE91E63)
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(tint.copy(alpha = 0.15f))
+            .padding(horizontal = 6.dp, vertical = 3.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Special: Slut badge shows female icon from drawable
+            if (badge == CustomBadge.Slut) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_female_24dp),
+                    contentDescription = badge.label,
+                    tint = tint,
+                    modifier = Modifier.size(14.dp)
+                )
+            } else {
+                Text(
+                    text = badge.emoji,
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp
+                )
+            }
+            Spacer(Modifier.width(3.dp))
+            Text(
+                text = badge.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = tint,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
 
 @Composable
 fun BadgeListEntry(badge: UserBadges) {
@@ -213,10 +272,24 @@ fun BadgeListEntry(badge: UserBadges) {
     }
 }
 
+/**
+ * Full badge list (used in profile sheet). Shows both official Revolt badges
+ * and owner-assigned custom badges for [userId].
+ */
 @Composable
-fun UserBadgeList(badges: Long) {
+fun UserBadgeList(badges: Long, userId: String? = null) {
+    val context = LocalContext.current
     val allEntries = badgeEntries()
     val activeBadges = allEntries.filter { badges has it.badge }
+
+    var customBadges by remember(userId) { mutableStateOf<Set<CustomBadge>>(emptySet()) }
+    LaunchedEffect(userId) {
+        if (userId != null) {
+            customBadges = withContext(Dispatchers.IO) {
+                CustomBadgeStore.get(context).getBadges(userId)
+            }
+        }
+    }
 
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -224,14 +297,33 @@ fun UserBadgeList(badges: Long) {
         activeBadges.forEach { entry ->
             BadgeListEntry(entry.badge)
         }
+        // Custom badges (owner-assigned)
+        customBadges.forEach { badge ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CustomBadgeChip(badge)
+            }
+        }
     }
 }
 
+/**
+ * Inline badge row (used in profile card header). Shows both official and custom badges.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun UserBadgeRow(badges: Long) {
+fun UserBadgeRow(badges: Long, userId: String? = null) {
+    val context = LocalContext.current
     val allEntries = badgeEntries()
     val activeBadges = allEntries.filter { badges has it.badge }
+
+    var customBadges by remember(userId) { mutableStateOf<Set<CustomBadge>>(emptySet()) }
+    LaunchedEffect(userId) {
+        if (userId != null) {
+            customBadges = withContext(Dispatchers.IO) {
+                CustomBadgeStore.get(context).getBadges(userId)
+            }
+        }
+    }
 
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -244,6 +336,9 @@ fun UserBadgeRow(badges: Long) {
                 contentDescription = entry.label,
                 modifier = Modifier.size(32.dp)
             )
+        }
+        customBadges.forEach { badge ->
+            CustomBadgeChip(badge)
         }
     }
 }

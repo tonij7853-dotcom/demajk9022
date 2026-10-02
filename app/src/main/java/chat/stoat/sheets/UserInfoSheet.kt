@@ -651,9 +651,12 @@ fun UserInfoSheet(
                             }
                         }
 
-                        // Display other badges if present
-                        if ((currentUser.badges ?: 0) > 0) {
-                            UserBadgeRow(badges = currentUser.badges!!)
+                        // Display other badges if present (official + owner-assigned custom)
+                        if ((currentUser.badges ?: 0) > 0 || currentUser.id != null) {
+                            UserBadgeRow(
+                                badges = currentUser.badges ?: 0L,
+                                userId = currentUser.id
+                            )
                         }
                     }
 
