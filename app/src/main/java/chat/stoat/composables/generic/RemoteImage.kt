@@ -14,12 +14,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import chat.stoat.internals.LocalMediaCache
+import chat.stoat.logging.AppLogger
 import com.bumptech.glide.integration.compose.CrossFade
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
+import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy
+import com.bumptech.glide.request.RequestListener
+import com.bumptech.glide.request.target.Target
+import android.graphics.drawable.Drawable
 
 val LocalAllowGifAnimation = compositionLocalOf { true }
 
@@ -87,6 +93,32 @@ fun RemoteImage(
             .then(if (height > 0) Modifier.height(pxAsDp(height)) else Modifier),
         transition = effectiveTransition,
         requestBuilderTransform = { rb ->
+            rb.listener(object : RequestListener<Drawable> {
+                override fun onLoadFailed(
+                    e: GlideException?,
+                    model: Any?,
+                    target: Target<Drawable>,
+                    isFirstResource: Boolean
+                ): Boolean {
+                    val modelStr = model?.toString() ?: ""
+                    if (modelStr.contains("/backgrounds/") || modelStr.contains("/avatars/") || modelStr.contains(".gif", ignoreCase = true)) {
+                        AppLogger.w("glide_image_load_failed", mapOf(
+                            "url" to modelStr.take(150),
+                            "error" to (e?.message ?: "unknown")
+                        ))
+                    }
+                    return false
+                }
+
+                override fun onResourceReady(
+                    resource: Drawable,
+                    model: Any,
+                    target: Target<Drawable>?,
+                    dataSource: DataSource,
+                    isFirstResource: Boolean
+                ): Boolean = false
+            })
+
             if (isAnimatable) {
                 // For animated GIFs: keep animation enabled, cache raw data, never thumbnail or downsample
                 rb.diskCacheStrategy(DiskCacheStrategy.DATA)

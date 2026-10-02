@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import chat.stoat.R
 import chat.stoat.api.settings.LoadedSettings
+import chat.stoat.logging.AppLogger
 import com.bumptech.glide.integration.compose.CrossFade
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
@@ -72,6 +73,7 @@ fun InlineMediaPicker(
 
                 IconButton(
                     onClick = {
+                        AppLogger.i("inline_media_remove_clicked", mapOf("circular" to true))
                         onRemove()
                     },
                     enabled = (currentModel != null) && enabled
@@ -99,6 +101,7 @@ fun InlineMediaPicker(
 
                 TextButton(
                     onClick = {
+                        AppLogger.i("inline_media_remove_clicked", mapOf("circular" to false))
                         onRemove()
                     },
                     enabled = (currentModel != null) && enabled,
@@ -159,6 +162,11 @@ fun InlineMediaPickerMediaPicker(
     val documentsUiLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
+        AppLogger.i("inline_media_picked", mapOf(
+            "uri" to (uri?.toString() ?: "null"),
+            "enable_crop" to enableCrop,
+            "crop_shape" to cropShape.name
+        ))
         if (uri != null) {
             if (enableCrop) {
                 pendingCropUri = uri
@@ -169,11 +177,23 @@ fun InlineMediaPickerMediaPicker(
     }
 
     if (pendingCropUri != null) {
+        AppLogger.i("inline_media_cropper_launched", mapOf(
+            "uri" to pendingCropUri.toString(),
+            "crop_shape" to cropShape.name
+        ))
         ImageCropperDialog(
             imageUri = pendingCropUri!!,
             cropShape = cropShape,
-            onDismissRequest = { pendingCropUri = null },
+            onDismissRequest = {
+                AppLogger.i("inline_media_crop_dismissed", mapOf("crop_shape" to cropShape.name))
+                pendingCropUri = null
+            },
             onCropSuccess = { cropped ->
+                AppLogger.i("inline_media_crop_success", mapOf(
+                    "original_uri" to pendingCropUri.toString(),
+                    "cropped_uri" to cropped.toString(),
+                    "crop_shape" to cropShape.name
+                ))
                 pendingCropUri = null
                 onPick(cropped)
             }

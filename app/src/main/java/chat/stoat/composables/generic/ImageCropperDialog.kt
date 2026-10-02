@@ -139,6 +139,20 @@ fun ImageCropperDialog(
     LaunchedEffect(imageUri) {
         withContext(Dispatchers.IO) {
             try {
+                val openStream: () -> InputStream? = {
+                    if (imageUri.scheme?.lowercase() == "file") {
+                        val path = imageUri.path ?: imageUri.schemeSpecificPart
+                        if (path != null && File(path).exists()) File(path).inputStream() else null
+                    } else {
+                        try {
+                            context.contentResolver.openInputStream(imageUri)
+                        } catch (e: Exception) {
+                            val path = imageUri.path
+                            if (path != null && File(path).exists()) File(path).inputStream() else null
+                        }
+                    }
+                }
+
                 // Check if animated GIF
                 val mime = context.contentResolver.getType(imageUri)
                 val isMimeGif = mime?.equals("image/gif", ignoreCase = true) == true
@@ -146,7 +160,7 @@ fun ImageCropperDialog(
                         imageUri.lastPathSegment?.lowercase()?.endsWith(".gif") == true
 
                 var isHeaderGif = false
-                context.contentResolver.openInputStream(imageUri)?.use { stream ->
+                openStream()?.use { stream ->
                     val header = ByteArray(6)
                     val count = stream.read(header)
                     isHeaderGif = count >= 6 && header[0] == 'G'.code.toByte() && header[1] == 'I'.code.toByte() &&
@@ -155,14 +169,23 @@ fun ImageCropperDialog(
 
                 isGif = isMimeGif || isExtGif || isHeaderGif
 
+                AppLogger.i("cropper_dialog_opened", mapOf(
+                    "uri" to imageUri.toString(),
+                    "scheme" to (imageUri.scheme ?: "none"),
+                    "crop_shape" to cropShape.name,
+                    "target_aspect" to targetAspectRatio,
+                    "is_gif" to isGif,
+                    "is_header_gif" to isHeaderGif
+                ))
+
                 if (!isGif) {
                     // Only decode bitmap for non-GIFs (GIFs show live in GlideImage)
-                    val input: InputStream? = context.contentResolver.openInputStream(imageUri)
+                    val input: InputStream? = openStream()
                     val raw = BitmapFactory.decodeStream(input)
                     input?.close()
 
                     if (raw != null) {
-                        val exifInput: InputStream? = context.contentResolver.openInputStream(imageUri)
+                        val exifInput: InputStream? = openStream()
                         val exif = exifInput?.let { ExifInterface(it) }
                         val orientation = exif?.getAttributeInt(
                             ExifInterface.TAG_ORIENTATION,
@@ -186,9 +209,15 @@ fun ImageCropperDialog(
                             else -> raw
                         }
                         sourceBitmap = oriented
+                        AppLogger.i("cropper_dialog_bitmap_loaded", mapOf(
+                            "width" to oriented.width,
+                            "height" to oriented.height,
+                            "orientation" to orientation
+                        ))
                     }
                 }
             } catch (e: Exception) {
+                AppLogger.e("cropper_dialog_load_failed", mapOf("uri" to imageUri.toString()), e)
                 e.printStackTrace()
             } finally {
                 isLoading = false
@@ -599,6 +628,15 @@ private suspend fun performCrop(
     val outScaleY = outH / vpH
     matrix.postScale(outScaleX, outScaleY)
 
+    AppLogger.i("static_crop_started", mapOf(
+        "srcW" to srcW,
+        "srcH" to srcH,
+        "scale" to scale,
+        "rotation" to rotation,
+        "targetAspect" to targetAspect,
+        "cropShape" to cropShape.name
+    ))
+
     val cropped = Bitmap.createBitmap(outW.toInt().coerceAtLeast(1), outH.toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(cropped)
     val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG)
@@ -611,6 +649,13 @@ private suspend fun performCrop(
         out.flush()
     }
     cropped.recycle()
+
+    AppLogger.i("static_crop_finished", mapOf(
+        "outW" to outW,
+        "outH" to outH,
+        "size_bytes" to cacheFile.length(),
+        "file" to cacheFile.name
+    ))
 
     cacheFile.toUri()
 }
@@ -628,8 +673,26 @@ private suspend fun performGifCrop(
     viewportSize: IntSize,
     targetAspect: Float
 ): Uri = withContext(Dispatchers.IO) {
-    val bytes = context.contentResolver.openInputStream(gifUri)?.use { it.readBytes() }
-        ?: return@withContext gifUri
+    val inputStream: InputStream? = when (gifUri.scheme?.lowercase()) {
+        "file" -> {
+            val path = gifUri.path ?: gifUri.schemeSpecificPart
+            if (path != null && File(path).exists()) File(path).inputStream() else null
+        }
+        else -> {
+            try {
+                context.contentResolver.openInputStream(gifUri)
+            } catch (e: Exception) {
+                val path = gifUri.path
+                if (path != null && File(path).exists()) File(path).inputStream() else null
+            }
+        }
+    }
+
+    val bytes = inputStream?.use { it.readBytes() }
+        ?: run {
+            AppLogger.w("gif_crop_input_null", mapOf("uri" to gifUri.toString()))
+            return@withContext gifUri
+        }
 
     val cropStartTime = System.currentTimeMillis()
     AppLogger.i("gif_crop_started", mapOf(
@@ -745,8 +808,19 @@ private suspend fun performGifCrop(
                 encoder.addFrame(outBitmap)
                 outBitmap.recycle()
                 encodedFrames++
+
+                if (encodedFrames % 10 == 0 || encodedFrames == 1) {
+                    AppLogger.d("gif_crop_frame_encoded", mapOf(
+                        "encoded_index" to encodedFrames,
+                        "source_index" to i,
+                        "total_frames" to frameCount
+                    ))
+                }
             }
         }
+    } catch (e: Exception) {
+        AppLogger.e("gif_crop_loop_failed", mapOf("encoded_frames" to encodedFrames), e)
+        throw e
     } finally {
         encoder.finish()
         outStream.close()

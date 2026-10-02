@@ -18,6 +18,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import chat.stoat.StoatApplication
+import chat.stoat.logging.AppLogger
 import chat.stoat.persistence.KVStorage
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.JsonElement
@@ -100,19 +101,39 @@ suspend fun patchSelf(
         body["remove"] = StoatJson.encodeToJsonElement(ListSerializer(String.serializer()), remove)
     }
 
-    val response = StoatHttp.patch("/users/@me".api()) {
-        contentType(ContentType.Application.Json)
-        setBody(
-            StoatJson.encodeToString(
-                MapSerializer(
-                    String.serializer(),
-                    JsonElement.serializer()
-                ),
-                body
+    val startTime = System.currentTimeMillis()
+    AppLogger.i("user_patch_self_started", mapOf(
+        "has_avatar" to (avatar != null),
+        "has_background" to (background != null),
+        "has_bio" to (bio != null),
+        "has_status" to (status != null),
+        "has_pronouns" to (pronouns != null),
+        "remove" to (remove ?: emptyList())
+    ))
+
+    val response = try {
+        StoatHttp.patch("/users/@me".api()) {
+            contentType(ContentType.Application.Json)
+            setBody(
+                StoatJson.encodeToString(
+                    MapSerializer(
+                        String.serializer(),
+                        JsonElement.serializer()
+                    ),
+                    body
+                )
             )
-        )
+        }.bodyAsText()
+    } catch (e: Exception) {
+        AppLogger.e("user_patch_self_failed", mapOf("error" to (e.message ?: "")), e)
+        throw e
     }
-        .bodyAsText()
+
+    val durationMs = System.currentTimeMillis() - startTime
+    AppLogger.i("user_patch_self_response", mapOf(
+        "duration_ms" to durationMs,
+        "response_body" to response.take(200)
+    ))
 
     if (StoatAPI.selfId == null) {
         throw Error("Self ID is null")

@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import chat.stoat.api.StoatJson
 import chat.stoat.composables.generic.RemoteImage
+import chat.stoat.logging.AppLogger
 import chat.stoat.api.StoatAPI
 import chat.stoat.persistence.KVStorage
 import chat.stoat.ui.theme.ClaudeTokens
@@ -168,12 +169,28 @@ fun GifPickerSheet(
         if (isDownloading) return
         isDownloading = true
         errorMessage = null
+        AppLogger.i("gif_picker_selected", mapOf(
+            "id" to gif.id,
+            "title" to gif.title,
+            "category" to gif.category,
+            "media_url" to gif.mediaUrl
+        ))
         scope.launch {
             try {
+                AppLogger.i("gif_picker_download_started", mapOf("id" to gif.id))
                 val file = withContext(Dispatchers.IO) { downloadGif(context, gif, context.cacheDir) }
+                AppLogger.i("gif_picker_download_success", mapOf(
+                    "id" to gif.id,
+                    "file_path" to file.absolutePath,
+                    "size_bytes" to file.length()
+                ))
                 onGifSelected(Uri.fromFile(file))
                 onDismissRequest()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                AppLogger.e("gif_picker_download_failed", mapOf(
+                    "id" to gif.id,
+                    "error" to (e.message ?: "")
+                ), e)
                 errorMessage = "Couldn't prepare this GIF. Try another one."
             } finally {
                 isDownloading = false

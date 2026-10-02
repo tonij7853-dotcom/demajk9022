@@ -59,7 +59,9 @@ import android.graphics.BitmapFactory
 import android.widget.Toast
 import androidx.compose.material3.Button
 import androidx.compose.ui.text.font.FontWeight
+import androidx.core.net.toUri
 import chat.stoat.api.routes.user.patchSelf
+import chat.stoat.composables.generic.CropShape
 import chat.stoat.composables.generic.InlineMediaPicker
 import chat.stoat.composables.profile.ProfileCosmeticsSettings
 import chat.stoat.composables.screens.settings.RawUserOverview
@@ -105,11 +107,11 @@ class ProfileSettingsScreenViewModel(val context: Application) :
             }
             viewModelScope.launch {
                 currentProfile = fetchUserProfile(self)
-                currentProfile!!.background?.id?.let {
-                    backgroundModel = "$STOAT_FILES/backgrounds/${it}"
+                currentProfile?.background?.let {
+                    backgroundModel = "$STOAT_FILES/backgrounds/${it.id}/${it.filename}"
                 }
 
-                pendingProfile = currentProfile!!.copy()
+                pendingProfile = currentProfile?.copy()
 
                 isLoading = false
             }
@@ -119,14 +121,32 @@ class ProfileSettingsScreenViewModel(val context: Application) :
 
     private fun prepareImageForUpload(uri: Uri, prefix: String): Pair<File, ContentType> {
         val inputStreamSupplier: () -> InputStream? = {
-            if (uri.scheme == "http" || uri.scheme == "https") {
-                val client = OkHttpClient()
-                val resp = client.newCall(Request.Builder().url(uri.toString()).build()).execute()
-                if (resp.isSuccessful) resp.body?.byteStream() else null
-            } else {
-                context.contentResolver.openInputStream(uri)
+            when (uri.scheme?.lowercase()) {
+                "http", "https" -> {
+                    val client = OkHttpClient()
+                    val resp = client.newCall(Request.Builder().url(uri.toString()).build()).execute()
+                    if (resp.isSuccessful) resp.body?.byteStream() else null
+                }
+                "file" -> {
+                    val path = uri.path ?: uri.schemeSpecificPart
+                    if (path != null && File(path).exists()) File(path).inputStream() else null
+                }
+                else -> {
+                    try {
+                        context.contentResolver.openInputStream(uri)
+                    } catch (e: Exception) {
+                        val path = uri.path
+                        if (path != null && File(path).exists()) File(path).inputStream() else null
+                    }
+                }
             }
         }
+
+        AppLogger.i("image_prep_started", mapOf(
+            "uri" to uri.toString(),
+            "prefix" to prefix,
+            "scheme" to (uri.scheme ?: "none")
+        ))
 
         // Check if it's an animated GIF by inspecting first 6 bytes
         val isGif = try {
@@ -137,8 +157,11 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                         header[2] == 'F'.code.toByte() && header[3] == '8'.code.toByte()
             } ?: false
         } catch (e: Exception) {
+            AppLogger.w("image_prep_gif_check_failed", mapOf("uri" to uri.toString(), "error" to (e.message ?: "")))
             false
         }
+
+        AppLogger.i("image_prep_type_resolved", mapOf("prefix" to prefix, "is_gif" to isGif))
 
         if (isGif) {
             val filename = "${prefix}_${System.currentTimeMillis()}.gif"
@@ -148,6 +171,11 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                     input.copyTo(output)
                 }
             }
+            AppLogger.i("image_prep_gif_ready", mapOf(
+                "filename" to filename,
+                "size_bytes" to mFile.length(),
+                "path" to mFile.absolutePath
+            ))
             return Pair(mFile, ContentType.Image.GIF)
         }
 
@@ -248,14 +276,29 @@ class ProfileSettingsScreenViewModel(val context: Application) :
         val uri = pendingPfpUri ?: when (pfpModel) {
             is Uri -> pfpModel as Uri
             is String -> Uri.parse(pfpModel as String)
-            else -> return
+            is File -> (pfpModel as File).toUri()
+            else -> {
+                AppLogger.w("profile_save_avatar_skipped", mapOf("reason" to "no_uri", "pfpModel" to (pfpModel?.toString() ?: "null")))
+                return
+            }
         }
 
         isSavingPfp = true
-        AppLogger.i("profile_save_avatar_started", mapOf("uri" to uri.toString()))
+        val startTime = System.currentTimeMillis()
+        AppLogger.i("profile_save_avatar_started", mapOf(
+            "uri" to uri.toString(),
+            "scheme" to (uri.scheme ?: "none"),
+            "is_pending" to (pendingPfpUri != null)
+        ))
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val (mFile, contentType) = prepareImageForUpload(uri, "avatar")
+                AppLogger.i("profile_save_avatar_prepared", mapOf(
+                    "filename" to mFile.name,
+                    "size_bytes" to mFile.length(),
+                    "content_type" to contentType.toString()
+                ))
+
                 val id = uploadToAutumn(
                     mFile,
                     mFile.name,
@@ -266,13 +309,24 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                     }
                 )
 
+                AppLogger.i("profile_save_avatar_autumn_done", mapOf("autumn_id" to id))
+
                 patchSelf(avatar = id)
-                AppLogger.i("profile_save_avatar_success", mapOf("autumn_id" to id, "size_bytes" to mFile.length()))
+                val newAvatarUrl = StoatAPI.userCache[StoatAPI.selfId]?.avatar?.let {
+                    "$STOAT_FILES/avatars/${it.id}/${it.filename}"
+                } ?: StoatAPI.userCache[StoatAPI.selfId]?.avatar?.id?.let {
+                    "$STOAT_FILES/avatars/${it}"
+                }
+
+                AppLogger.i("profile_save_avatar_success", mapOf(
+                    "autumn_id" to id,
+                    "size_bytes" to mFile.length(),
+                    "new_avatar_url" to (newAvatarUrl ?: "null"),
+                    "total_duration_ms" to (System.currentTimeMillis() - startTime)
+                ))
 
                 withContext(Dispatchers.Main) {
-                    pfpModel = StoatAPI.userCache[StoatAPI.selfId]?.avatar?.id?.let {
-                        "$STOAT_FILES/avatars/${it}"
-                    }
+                    pfpModel = newAvatarUrl
                     pendingPfpUri = null
                     isSavingPfp = false
                     uploadProgress = 0f
@@ -296,14 +350,29 @@ class ProfileSettingsScreenViewModel(val context: Application) :
         val uri = pendingBannerUri ?: when (backgroundModel) {
             is Uri -> backgroundModel as Uri
             is String -> Uri.parse(backgroundModel as String)
-            else -> return
+            is File -> (backgroundModel as File).toUri()
+            else -> {
+                AppLogger.w("profile_save_banner_skipped", mapOf("reason" to "no_uri", "backgroundModel" to (backgroundModel?.toString() ?: "null")))
+                return
+            }
         }
 
         isSavingBanner = true
-        AppLogger.i("profile_save_banner_started", mapOf("uri" to uri.toString()))
+        val startTime = System.currentTimeMillis()
+        AppLogger.i("profile_save_banner_started", mapOf(
+            "uri" to uri.toString(),
+            "scheme" to (uri.scheme ?: "none"),
+            "is_pending" to (pendingBannerUri != null)
+        ))
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val (mFile, contentType) = prepareImageForUpload(uri, "background")
+                AppLogger.i("profile_save_banner_prepared", mapOf(
+                    "filename" to mFile.name,
+                    "size_bytes" to mFile.length(),
+                    "content_type" to contentType.toString()
+                ))
+
                 val id = uploadToAutumn(
                     mFile,
                     mFile.name,
@@ -314,17 +383,30 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                     }
                 )
 
+                AppLogger.i("profile_save_banner_autumn_done", mapOf("autumn_id" to id))
+
                 patchSelf(background = id)
-                AppLogger.i("profile_save_banner_success", mapOf("autumn_id" to id, "size_bytes" to mFile.length()))
+                AppLogger.i("profile_save_banner_patch_done", mapOf("autumn_id" to id))
 
                 val profile = StoatAPI.selfId?.let { fetchUserProfile(it) }
+                val newBgUrl = profile?.background?.let {
+                    "$STOAT_FILES/backgrounds/${it.id}/${it.filename}"
+                } ?: profile?.background?.id?.let {
+                    "$STOAT_FILES/backgrounds/${it}"
+                }
+
+                AppLogger.i("profile_save_banner_success", mapOf(
+                    "autumn_id" to id,
+                    "size_bytes" to mFile.length(),
+                    "new_bg_url" to (newBgUrl ?: "null"),
+                    "total_duration_ms" to (System.currentTimeMillis() - startTime)
+                ))
+
                 withContext(Dispatchers.Main) {
                     if (profile != null) {
                         currentProfile = profile
                         pendingProfile = profile
-                        backgroundModel = profile.background?.id?.let {
-                            "$STOAT_FILES/backgrounds/${it}"
-                        }
+                        backgroundModel = newBgUrl
                     }
                     pendingBannerUri = null
                     isSavingBanner = false
@@ -344,22 +426,32 @@ class ProfileSettingsScreenViewModel(val context: Application) :
     }
 
     fun removePfp() {
-        AppLogger.i("profile_remove_avatar")
+        AppLogger.i("profile_remove_avatar_started")
         pendingPfpUri = null
         viewModelScope.launch {
-            patchSelf(remove = listOf("Avatar"))
-            pfpModel = null
-            Toast.makeText(context, "Profile picture removed", Toast.LENGTH_SHORT).show()
+            try {
+                patchSelf(remove = listOf("Avatar"))
+                pfpModel = null
+                AppLogger.i("profile_remove_avatar_success")
+                Toast.makeText(context, "Profile picture removed", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                AppLogger.e("profile_remove_avatar_failed", mapOf("error" to (e.message ?: "")), e)
+            }
         }
     }
 
     fun removeBackground() {
-        AppLogger.i("profile_remove_banner")
+        AppLogger.i("profile_remove_banner_started")
         pendingBannerUri = null
         viewModelScope.launch {
-            patchSelf(remove = listOf("ProfileBackground"))
-            backgroundModel = null
-            Toast.makeText(context, "Banner removed", Toast.LENGTH_SHORT).show()
+            try {
+                patchSelf(remove = listOf("ProfileBackground"))
+                backgroundModel = null
+                AppLogger.i("profile_remove_banner_success")
+                Toast.makeText(context, "Banner removed", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                AppLogger.e("profile_remove_banner_failed", mapOf("error" to (e.message ?: "")), e)
+            }
         }
     }
 
@@ -538,8 +630,9 @@ fun ProfileSettingsScreen(
                                 circular = true,
                                 useAvatarCircularity = true,
                                 onPick = {
+                                    AppLogger.i("profile_avatar_picked_from_picker", mapOf("uri" to it.toString()))
                                     viewModel.pendingPfpUri = it
-                                    viewModel.pfpModel = it.toString()
+                                    viewModel.pfpModel = it
                                 },
                                 canRemove = true,
                                 onRemove = {
@@ -602,13 +695,15 @@ fun ProfileSettingsScreen(
                             InlineMediaPicker(
                                 currentModel = viewModel.backgroundModel,
                                 onPick = {
+                                    AppLogger.i("profile_banner_picked_from_picker", mapOf("uri" to it.toString()))
                                     viewModel.pendingBannerUri = it
-                                    viewModel.backgroundModel = it.toString()
+                                    viewModel.backgroundModel = it
                                 },
                                 canRemove = true,
                                 onRemove = {
                                     viewModel.removeBackground()
-                                }
+                                },
+                                cropShape = CropShape.WideBanner
                             )
 
                             Row(
@@ -771,8 +866,9 @@ fun ProfileSettingsScreen(
                     onDismissRequest = { showGifPickerForAvatar = false },
                     onGifSelected = { uri ->
                         showGifPickerForAvatar = false
+                        AppLogger.i("profile_avatar_gif_selected_from_sheet", mapOf("uri" to uri.toString()))
                         viewModel.pendingPfpUri = uri
-                        viewModel.pfpModel = uri.toString()
+                        viewModel.pfpModel = uri
                         viewModel.saveNewPfp()
                     }
                 )
@@ -783,8 +879,9 @@ fun ProfileSettingsScreen(
                     onDismissRequest = { showGifPickerForBanner = false },
                     onGifSelected = { uri ->
                         showGifPickerForBanner = false
+                        AppLogger.i("profile_banner_gif_selected_from_sheet", mapOf("uri" to uri.toString()))
                         viewModel.pendingBannerUri = uri
-                        viewModel.backgroundModel = uri.toString()
+                        viewModel.backgroundModel = uri
                         viewModel.saveNewBackground()
                     }
                 )
