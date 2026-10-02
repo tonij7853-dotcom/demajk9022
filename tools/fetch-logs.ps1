@@ -55,6 +55,7 @@ param (
     [switch]$Status,
     [string]$CloudUrl = "",
     [switch]$FromCloud,
+    [string]$Password = "DismodLogs#2026",
     [string]$OutFile = "",
     [string]$AdbPath = ""
 )
@@ -204,9 +205,41 @@ if (-not $result -and $adb -and -not $Status -and -not $Clear) {
     } catch {}
 }
 
-# ── 4. Process and Output ──
+# ── 4. Helper: Decrypt Log If Encrypted ──
+function Decrypt-DismodLog([string]$rawText, [string]$pwd) {
+    if (-not $rawText -or -not $rawText.Trim().StartsWith("{") -or $rawText -notmatch '"dismod_encrypted"\s*:\s*true') {
+        return $rawText
+    }
+
+    try {
+        $json = $rawText | ConvertFrom-Json
+        $iv = [System.Convert]::FromBase64String($json.iv)
+        $cipherBytes = [System.Convert]::FromBase64String($json.data)
+
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        $keyBytes = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($pwd))
+
+        $aes = [System.Security.Cryptography.Aes]::Create()
+        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
+        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
+        $aes.Key = $keyBytes
+        $aes.IV = $iv
+
+        $decryptor = $aes.CreateDecryptor()
+        $plainBytes = $decryptor.TransformFinalBlock($cipherBytes, 0, $cipherBytes.Length)
+        Write-Host "Successfully decrypted cloud log using password!" -ForegroundColor Green
+        return [System.Text.Encoding]::UTF8.GetString($plainBytes)
+    } catch {
+        Write-Warning "Failed to decrypt log with password '$pwd': $($_.Exception.Message)"
+        Write-Warning "If a custom password was configured in Dismod Settings -> Debug Logs, specify it using -Password <pwd>"
+        return $rawText
+    }
+}
+
+# ── 5. Process and Output ──
 if ($result) {
     $outString = if ($result -is [string]) { $result } else { $result | ConvertTo-Json -Depth 5 }
+    $outString = Decrypt-DismodLog $outString $Password
 
     if ($OutFile) {
         $resolvedOut = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutFile)

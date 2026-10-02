@@ -24,6 +24,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,6 +68,9 @@ fun DebugLogsScreen(navController: NavController) {
     var autoUploadErrors by remember { mutableStateOf(CloudLogStorage.autoUploadErrors) }
     var webhookUrlInput by remember { mutableStateOf(CloudLogStorage.webhookUrl) }
     var showCloudSettings by remember { mutableStateOf(false) }
+    var isEncryptionEnabled by remember { mutableStateOf(CloudLogStorage.isEncryptionEnabled) }
+    var encryptionPasswordInput by remember { mutableStateOf(CloudLogStorage.encryptionPassword) }
+    var showPassword by remember { mutableStateOf(false) }
 
     fun reloadLogs() {
         isLoading = true
@@ -440,6 +445,82 @@ fun DebugLogsScreen(navController: NavController) {
                             )
                         }
 
+                        Spacer(Modifier.height(8.dp))
+                        HorizontalDivider()
+                        Spacer(Modifier.height(8.dp))
+
+                        // Switch: Encrypt Cloud Logs with Password
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Password Protection (AES-256)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    "Encrypts cloud logs so only someone with the password can read them",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = isEncryptionEnabled,
+                                onCheckedChange = {
+                                    isEncryptionEnabled = it
+                                    CloudLogStorage.setEncryptionEnabled(it)
+                                }
+                            )
+                        }
+
+                        if (isEncryptionEnabled) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Cloud Log Password",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = encryptionPasswordInput,
+                                    onValueChange = { encryptionPasswordInput = it },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp),
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodySmall,
+                                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        IconButton(onClick = { showPassword = !showPassword }) {
+                                            Icon(
+                                                painter = painterResource(if (showPassword) R.drawable.ic_visibility_off_24dp else R.drawable.ic_visibility_24dp),
+                                                contentDescription = "Toggle password visibility",
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                )
+                                Button(
+                                    onClick = {
+                                        CloudLogStorage.setEncryptionPassword(encryptionPasswordInput)
+                                        Toast.makeText(context, "Password saved!", Toast.LENGTH_SHORT).show()
+                                    }
+                                ) {
+                                    Text("Save")
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        HorizontalDivider()
                         Spacer(Modifier.height(8.dp))
 
                         // Webhook URL input

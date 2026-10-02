@@ -40,6 +40,8 @@ object CloudLogStorage {
     private const val KEY_WEBHOOK_URL = "webhook_url"
     private const val KEY_AUTO_UPLOAD_ERRORS = "auto_upload_errors"
     private const val KEY_LAST_CLOUD_URL = "last_cloud_url"
+    private const val KEY_ENCRYPTION_ENABLED = "encryption_enabled"
+    private const val KEY_ENCRYPTION_PASSWORD = "encryption_password"
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -67,12 +69,22 @@ object CloudLogStorage {
     var lastCloudLogUrl: String = ""
         private set
 
+    @Volatile
+    var isEncryptionEnabled: Boolean = true
+        private set
+
+    @Volatile
+    var encryptionPassword: String = LogEncryptor.DEFAULT_PASSWORD
+        private set
+
     fun init(context: Context) {
         val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs = sp
         webhookUrl = sp.getString(KEY_WEBHOOK_URL, "") ?: ""
         autoUploadErrors = sp.getBoolean(KEY_AUTO_UPLOAD_ERRORS, true)
         lastCloudLogUrl = sp.getString(KEY_LAST_CLOUD_URL, "") ?: ""
+        isEncryptionEnabled = sp.getBoolean(KEY_ENCRYPTION_ENABLED, true)
+        encryptionPassword = sp.getString(KEY_ENCRYPTION_PASSWORD, LogEncryptor.DEFAULT_PASSWORD) ?: LogEncryptor.DEFAULT_PASSWORD
     }
 
     fun setWebhookUrl(url: String) {
@@ -88,6 +100,17 @@ object CloudLogStorage {
     fun setLastCloudLogUrl(url: String) {
         lastCloudLogUrl = url
         prefs?.edit()?.putString(KEY_LAST_CLOUD_URL, url)?.apply()
+    }
+
+    fun setEncryptionEnabled(enabled: Boolean) {
+        isEncryptionEnabled = enabled
+        prefs?.edit()?.putBoolean(KEY_ENCRYPTION_ENABLED, enabled)?.apply()
+    }
+
+    fun setEncryptionPassword(password: String) {
+        val effective = password.trim().ifEmpty { LogEncryptor.DEFAULT_PASSWORD }
+        encryptionPassword = effective
+        prefs?.edit()?.putString(KEY_ENCRYPTION_PASSWORD, effective)?.apply()
     }
 
     /**
@@ -206,7 +229,12 @@ object CloudLogStorage {
         reason: String = "manual"
     ): Result<String> {
         return try {
-            val content = AppLogger.getLogsFormattedForAi(maxCount = maxCount, errorsOnly = errorsOnly)
+            val rawContent = AppLogger.getLogsFormattedForAi(maxCount = maxCount, errorsOnly = errorsOnly)
+            val content = if (isEncryptionEnabled && encryptionPassword.isNotBlank()) {
+                LogEncryptor.encrypt(rawContent, encryptionPassword)
+            } else {
+                rawContent
+            }
             var publicUrl: String? = null
 
             // 1. Try Autumn CDN first if authenticated
