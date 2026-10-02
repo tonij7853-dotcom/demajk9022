@@ -121,6 +121,26 @@ fun InlineMediaPicker(
     }
 }
 
+private fun isGifUri(context: android.content.Context, uri: Uri): Boolean {
+    val mime = context.contentResolver.getType(uri)
+    if (mime?.equals("image/gif", ignoreCase = true) == true) return true
+    val path = uri.path?.lowercase() ?: ""
+    if (path.endsWith(".gif")) return true
+    val lastSegment = uri.lastPathSegment?.lowercase() ?: ""
+    if (lastSegment.endsWith(".gif")) return true
+
+    return try {
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            val header = ByteArray(6)
+            val count = stream.read(header)
+            count >= 6 && header[0] == 'G'.code.toByte() && header[1] == 'I'.code.toByte() &&
+                    header[2] == 'F'.code.toByte() && header[3] == '8'.code.toByte()
+        } ?: false
+    } catch (e: Exception) {
+        false
+    }
+}
+
 @OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun InlineMediaPickerMediaPicker(
@@ -133,13 +153,18 @@ fun InlineMediaPickerMediaPicker(
     enabled: Boolean = true,
     onPick: (Uri) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var pendingCropUri by remember { mutableStateOf<Uri?>(null) }
 
     val documentsUiLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            if (enableCrop) {
+            val isGif = isGifUri(context, uri)
+            if (isGif) {
+                // Preserve animated GIFs directly so animation plays continuously without flattening
+                onPick(uri)
+            } else if (enableCrop) {
                 pendingCropUri = uri
             } else {
                 onPick(uri)

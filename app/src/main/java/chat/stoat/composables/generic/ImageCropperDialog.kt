@@ -128,10 +128,28 @@ fun ImageCropperDialog(
         CropShape.WideBanner -> 2.5f
     }
 
+    var isGif by remember { mutableStateOf(false) }
+
     // Load and orient bitmap on launch
     LaunchedEffect(imageUri) {
         withContext(Dispatchers.IO) {
             try {
+                // Check if animated GIF
+                val mime = context.contentResolver.getType(imageUri)
+                val isMimeGif = mime?.equals("image/gif", ignoreCase = true) == true
+                val isExtGif = imageUri.path?.lowercase()?.endsWith(".gif") == true ||
+                        imageUri.lastPathSegment?.lowercase()?.endsWith(".gif") == true
+
+                var isHeaderGif = false
+                context.contentResolver.openInputStream(imageUri)?.use { stream ->
+                    val header = ByteArray(6)
+                    val count = stream.read(header)
+                    isHeaderGif = count >= 6 && header[0] == 'G'.code.toByte() && header[1] == 'I'.code.toByte() &&
+                            header[2] == 'F'.code.toByte() && header[3] == '8'.code.toByte()
+                }
+
+                isGif = isMimeGif || isExtGif || isHeaderGif
+
                 val input: InputStream? = context.contentResolver.openInputStream(imageUri)
                 val raw = BitmapFactory.decodeStream(input)
                 input?.close()
@@ -209,8 +227,8 @@ fun ImageCropperDialog(
 
                     Text(
                         text = when (cropShape) {
-                            CropShape.Circle, CropShape.Square -> "Edit Profile Picture"
-                            CropShape.Banner, CropShape.WideBanner -> "Edit Banner"
+                            CropShape.Circle, CropShape.Square -> if (isGif) "Profile GIF (Animated)" else "Edit Profile Picture"
+                            CropShape.Banner, CropShape.WideBanner -> if (isGif) "Banner GIF (Animated)" else "Edit Banner"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
@@ -219,6 +237,12 @@ fun ImageCropperDialog(
 
                     IconButton(
                         onClick = {
+                            if (isGif) {
+                                // Preserve full animated GIF playback
+                                onCropSuccess(imageUri)
+                                return@IconButton
+                            }
+
                             val bmp = sourceBitmap ?: return@IconButton
                             if (isProcessingCrop) return@IconButton
                             isProcessingCrop = true
@@ -247,7 +271,7 @@ fun ImageCropperDialog(
                                 }
                             }
                         },
-                        enabled = !isProcessingCrop && sourceBitmap != null
+                        enabled = !isProcessingCrop && (sourceBitmap != null || isGif)
                     ) {
                         if (isProcessingCrop) {
                             CircularProgressIndicator(
