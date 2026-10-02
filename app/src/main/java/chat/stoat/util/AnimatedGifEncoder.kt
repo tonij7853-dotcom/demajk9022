@@ -44,19 +44,21 @@ class AnimatedGifEncoder {
             if (width == 0) {
                 width = bitmap.width
                 height = bitmap.height
-                writeLSD()
-                if (repeat >= 0) writeNetscapeExt()
             }
             getImagePixels(bitmap)
             analyzePixels()
             if (firstFrame) {
+                writeLSD()
                 writePalette()
-                firstFrame = false
+                if (repeat >= 0) writeNetscapeExt()
             }
             writeGraphicCtrlExt()
             writeImageDesc()
-            if (!firstFrame) writePalette()
+            if (!firstFrame) {
+                writePalette()
+            }
             writePixels()
+            firstFrame = false
             true
         } catch (e: Exception) { false }
     }
@@ -152,7 +154,11 @@ class AnimatedGifEncoder {
         out!!.write(0x2C)
         writeShort(0); writeShort(0)
         writeShort(width); writeShort(height)
-        out!!.write(0)
+        if (firstFrame) {
+            out!!.write(0)
+        } else {
+            out!!.write(0x80 or palSize)
+        }
     }
 
     private fun writePixels() {

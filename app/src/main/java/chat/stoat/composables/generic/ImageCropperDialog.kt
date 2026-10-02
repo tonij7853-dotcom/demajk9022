@@ -653,7 +653,7 @@ private suspend fun performGifCrop(
     val vpW = if (viewportSize.width > 0) viewportSize.width.toFloat() else 1080f
     val vpH = if (viewportSize.height > 0) viewportSize.height.toFloat() else (1080f / targetAspect)
 
-    val maxDim = if (targetAspect >= 1.5f) 720f else 480f
+    val maxDim = if (targetAspect >= 1.5f) 540f else 360f
     val outW: Float
     val outH: Float
     if (targetAspect >= 1f) {
@@ -691,26 +691,36 @@ private suspend fun performGifCrop(
 
     val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG)
 
-    val step = if (frameCount > 80) (frameCount / 60).coerceAtLeast(1) else 1
-
-    for (i in 0 until frameCount) {
-        decoder.advance()
-        val frame = decoder.nextFrame
-        val delay = decoder.nextDelay
-
-        if (i % step == 0 && frame != null) {
-            val outBitmap = Bitmap.createBitmap(outW.toInt().coerceAtLeast(1), outH.toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-            val canvas = android.graphics.Canvas(outBitmap)
-            canvas.drawBitmap(frame, matrix, paint)
-
-            encoder.setDelay((delay * step).coerceAtLeast(20))
-            encoder.addFrame(outBitmap)
-            outBitmap.recycle()
-        }
+    // Cap total encoded frames to ~36 max to stay strictly within Autumn's ~4MB limit and finish encoding in <1s
+    val maxTargetFrames = 36
+    val step = if (frameCount > maxTargetFrames) {
+        ((frameCount + maxTargetFrames - 1) / maxTargetFrames).coerceAtLeast(1)
+    } else {
+        1
     }
 
-    encoder.finish()
-    outStream.close()
+    try {
+        for (i in 0 until frameCount) {
+            decoder.advance()
+            val frame = decoder.nextFrame
+            val delay = decoder.nextDelay
+
+            if (i % step == 0 && frame != null) {
+                val outBitmap = Bitmap.createBitmap(outW.toInt().coerceAtLeast(1), outH.toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(outBitmap)
+                canvas.drawColor(android.graphics.Color.BLACK)
+                canvas.drawBitmap(frame, matrix, paint)
+
+                val effectiveDelay = if (delay <= 10) 100 else delay
+                encoder.setDelay((effectiveDelay * step).coerceAtLeast(20))
+                encoder.addFrame(outBitmap)
+                outBitmap.recycle()
+            }
+        }
+    } finally {
+        encoder.finish()
+        outStream.close()
+    }
 
     cacheFile.toUri()
 }
