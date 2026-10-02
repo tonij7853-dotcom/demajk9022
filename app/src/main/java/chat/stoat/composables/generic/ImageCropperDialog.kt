@@ -150,35 +150,38 @@ fun ImageCropperDialog(
 
                 isGif = isMimeGif || isExtGif || isHeaderGif
 
-                val input: InputStream? = context.contentResolver.openInputStream(imageUri)
-                val raw = BitmapFactory.decodeStream(input)
-                input?.close()
+                if (!isGif) {
+                    // Only decode bitmap for non-GIFs (GIFs show live in GlideImage)
+                    val input: InputStream? = context.contentResolver.openInputStream(imageUri)
+                    val raw = BitmapFactory.decodeStream(input)
+                    input?.close()
 
-                if (raw != null) {
-                    val exifInput: InputStream? = context.contentResolver.openInputStream(imageUri)
-                    val exif = exifInput?.let { ExifInterface(it) }
-                    val orientation = exif?.getAttributeInt(
-                        ExifInterface.TAG_ORIENTATION,
-                        ExifInterface.ORIENTATION_NORMAL
-                    ) ?: ExifInterface.ORIENTATION_NORMAL
-                    exifInput?.close()
+                    if (raw != null) {
+                        val exifInput: InputStream? = context.contentResolver.openInputStream(imageUri)
+                        val exif = exifInput?.let { ExifInterface(it) }
+                        val orientation = exif?.getAttributeInt(
+                            ExifInterface.TAG_ORIENTATION,
+                            ExifInterface.ORIENTATION_NORMAL
+                        ) ?: ExifInterface.ORIENTATION_NORMAL
+                        exifInput?.close()
 
-                    val oriented = when (orientation) {
-                        ExifInterface.ORIENTATION_ROTATE_90 -> {
-                            val m = Matrix().apply { postRotate(90f) }
-                            Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+                        val oriented = when (orientation) {
+                            ExifInterface.ORIENTATION_ROTATE_90 -> {
+                                val m = Matrix().apply { postRotate(90f) }
+                                Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+                            }
+                            ExifInterface.ORIENTATION_ROTATE_180 -> {
+                                val m = Matrix().apply { postRotate(180f) }
+                                Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+                            }
+                            ExifInterface.ORIENTATION_ROTATE_270 -> {
+                                val m = Matrix().apply { postRotate(270f) }
+                                Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
+                            }
+                            else -> raw
                         }
-                        ExifInterface.ORIENTATION_ROTATE_180 -> {
-                            val m = Matrix().apply { postRotate(180f) }
-                            Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
-                        }
-                        ExifInterface.ORIENTATION_ROTATE_270 -> {
-                            val m = Matrix().apply { postRotate(270f) }
-                            Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, m, true)
-                        }
-                        else -> raw
+                        sourceBitmap = oriented
                     }
-                    sourceBitmap = oriented
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -298,11 +301,10 @@ fun ImageCropperDialog(
                         .background(Color.Black),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isLoading) {
+                    // Show loading spinner only for non-GIFs while bitmap decodes
+                    if (isLoading && !isGif) {
                         CircularProgressIndicator(color = Color.White)
-                    } else if (sourceBitmap != null) {
-                        val bmp = sourceBitmap!!
-
+                    } else if (isGif || sourceBitmap != null) {
                         BoxWithConstraints(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -346,9 +348,9 @@ fun ImageCropperDialog(
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                // Image with transforms
+                                // Image with transforms — animated GIF uses URI, static uses bitmap
                                 GlideImage(
-                                    model = bmp,
+                                    model = if (isGif) imageUri else sourceBitmap!!,
                                     contentDescription = null,
                                     contentScale = ContentScale.Fit,
                                     modifier = Modifier

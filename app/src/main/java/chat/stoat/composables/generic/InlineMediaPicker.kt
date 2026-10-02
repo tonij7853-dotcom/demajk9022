@@ -160,11 +160,7 @@ fun InlineMediaPickerMediaPicker(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            val isGif = isGifUri(context, uri)
-            if (isGif) {
-                // Preserve animated GIFs directly so animation plays continuously without flattening
-                onPick(uri)
-            } else if (enableCrop) {
+            if (enableCrop) {
                 pendingCropUri = uri
             } else {
                 onPick(uri)
