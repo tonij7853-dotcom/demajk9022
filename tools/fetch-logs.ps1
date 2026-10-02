@@ -53,6 +53,8 @@ param (
     [switch]$Raw,
     [switch]$Clear,
     [switch]$Status,
+    [string]$CloudUrl = "",
+    [switch]$FromCloud,
     [string]$OutFile = "",
     [string]$AdbPath = ""
 )
@@ -104,10 +106,40 @@ function Try-HttpFetch([string]$url) {
     }
 }
 
-Write-Host "Fetching Dismod logs from $httpUrl..." -ForegroundColor Cyan
+# Strategy 0: Direct Cloud Download (from anywhere on the internet)
+if ($CloudUrl -or $FromCloud) {
+    $targetCloudUrl = $CloudUrl
+    if (-not $targetCloudUrl -and $FromCloud) {
+        Write-Host "Querying device for latest cloud log link..." -ForegroundColor Cyan
+        $devStatus = Try-HttpFetch "http://${hostAddr}:${Port}/logs/cloud"
+        if ($devStatus -and $devStatus.url) {
+            $targetCloudUrl = $devStatus.url
+        }
+    }
+    if ($targetCloudUrl) {
+        Write-Host "Fetching logs directly from cloud storage ($targetCloudUrl)..." -ForegroundColor Cyan
+        $rawCloudUrl = $targetCloudUrl
+        if ($targetCloudUrl -match "^https?://dpaste\.org/[a-zA-Z0-9]+$" -and -not $targetCloudUrl.EndsWith("/raw")) {
+            $rawCloudUrl = "$targetCloudUrl/raw"
+        }
+        try {
+            $result = Invoke-RestMethod -Uri $rawCloudUrl -Method Get -TimeoutSec 10 -ErrorAction Stop
+        } catch {
+            Write-Error "Failed fetching from cloud URL: $_"
+            exit 1
+        }
+    } else {
+        Write-Error "No cloud URL specified and could not query device for latest cloud log URL."
+        exit 1
+    }
+}
 
-# Strategy 1: Direct HTTP (works if IP is specified or port already forwarded)
-$result = Try-HttpFetch $httpUrl
+if (-not $result) {
+    Write-Host "Fetching Dismod logs from $httpUrl..." -ForegroundColor Cyan
+
+    # Strategy 1: Direct HTTP (works if IP is specified or port already forwarded)
+    $result = Try-HttpFetch $httpUrl
+}
 
 # Strategy 2: If localhost failed and ADB exists, attempt ADB forward
 if (-not $result -and -not $Ip -and $adb) {

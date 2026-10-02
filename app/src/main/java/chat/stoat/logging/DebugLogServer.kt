@@ -128,10 +128,24 @@ object DebugLogServer {
                             "port": $activePort,
                             "ip": "${getLocalIpAddress() ?: "unknown"}",
                             "device": "${Build.MANUFACTURER} ${Build.MODEL}",
-                            "totalLogSize": "${AppLogger.getTotalLogSizeFormatted()}"
+                            "totalLogSize": "${AppLogger.getTotalLogSizeFormatted()}",
+                            "lastCloudLogUrl": "${CloudLogStorage.lastCloudLogUrl}",
+                            "webhookConfigured": ${CloudLogStorage.webhookUrl.isNotBlank()}
                         }
                     """.trimIndent()
                     sendResponse(writer, 200, "application/json", statusJson)
+                }
+                path == "/logs/cloud" -> {
+                    val existing = CloudLogStorage.lastCloudLogUrl
+                    if (existing.isNotBlank()) {
+                        sendResponse(writer, 200, "application/json", """{"url":"$existing"}""")
+                    } else {
+                        val result = kotlinx.coroutines.runBlocking {
+                            CloudLogStorage.uploadLogsToCloud()
+                        }
+                        val url = result.getOrNull() ?: ""
+                        sendResponse(writer, 200, "application/json", """{"url":"$url"}""")
+                    }
                 }
                 path == "/logs" || path == "/logs/ai" -> {
                     val limit = query.substringAfter("limit=", "200").toIntOrNull() ?: 200

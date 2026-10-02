@@ -29,8 +29,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.navigation.NavController
+import android.net.Uri
 import chat.stoat.R
 import chat.stoat.logging.AppLogger
+import chat.stoat.logging.CloudLogStorage
 import chat.stoat.logging.DebugLogServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -58,6 +60,12 @@ fun DebugLogsScreen(navController: NavController) {
     var totalSizeText by remember { mutableStateOf("0 KB") }
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("All") } // "All", "Errors", "GIF/Media"
+
+    var isCloudUploading by remember { mutableStateOf(false) }
+    var cloudLogUrl by remember { mutableStateOf(CloudLogStorage.lastCloudLogUrl) }
+    var autoUploadErrors by remember { mutableStateOf(CloudLogStorage.autoUploadErrors) }
+    var webhookUrlInput by remember { mutableStateOf(CloudLogStorage.webhookUrl) }
+    var showCloudSettings by remember { mutableStateOf(false) }
 
     fun reloadLogs() {
         isLoading = true
@@ -247,6 +255,228 @@ fun DebugLogsScreen(navController: NavController) {
                                 Text(adbCmd, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), fontSize = 11.sp)
                             }
                             Icon(painter = painterResource(R.drawable.ic_content_copy_24dp), contentDescription = "Copy", modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+
+            // ── CLOUD STORAGE & LIVE SYNC ──
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showCloudSettings = !showCloudSettings },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_cloud_24dp),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Cloud Storage & Live Sync",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (cloudLogUrl.isNotEmpty()) "Live logs stored in cloud" else "Store & access logs anywhere without USB/Wi-Fi",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = if (showCloudSettings) "Hide" else "Manage",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    // Always show Upload to Cloud Button
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            if (isCloudUploading) return@Button
+                            isCloudUploading = true
+                            coroutineScope.launch(Dispatchers.IO) {
+                                val result = CloudLogStorage.uploadLogsToCloud()
+                                withContext(Dispatchers.Main) {
+                                    isCloudUploading = false
+                                    result.onSuccess { url ->
+                                        cloudLogUrl = url
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("Dismod Cloud Log URL", url))
+                                        Toast.makeText(context, "Uploaded to Cloud! Link copied to clipboard.", Toast.LENGTH_LONG).show()
+                                    }.onFailure { err ->
+                                        Toast.makeText(context, "Upload failed: ${err.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        if (isCloudUploading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Uploading...")
+                        } else {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_cloud_24dp),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Upload Logs to Cloud (Worldwide Link)")
+                        }
+                    }
+
+                    // Display active cloud log URL if available
+                    if (cloudLogUrl.isNotEmpty()) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Latest Cloud Log Link",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    cloudLogUrl,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("Cloud Log URL", cloudLogUrl))
+                                    Toast.makeText(context, "Copied cloud log link!", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_content_copy_24dp),
+                                    contentDescription = "Copy Link",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    try {
+                                        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(cloudLogUrl))
+                                        context.startActivity(browserIntent)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Could not open browser: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_open_in_browser_24dp),
+                                    contentDescription = "Open Link",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Expandable Cloud Settings (Auto upload on error & Webhook streaming)
+                    if (showCloudSettings) {
+                        Spacer(Modifier.height(8.dp))
+                        HorizontalDivider()
+                        Spacer(Modifier.height(8.dp))
+
+                        // Switch: Auto upload on critical errors
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Auto-Upload on Error",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    "Automatically stores diagnostic dump in the cloud when critical errors occur",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = autoUploadErrors,
+                                onCheckedChange = {
+                                    autoUploadErrors = it
+                                    CloudLogStorage.setAutoUploadErrors(it)
+                                }
+                            )
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        // Webhook URL input
+                        Text(
+                            "Live Webhook Streaming (Discord / HTTP)",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Streams real-time logs to your Discord channel or server from anywhere",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = webhookUrlInput,
+                                onValueChange = { webhookUrlInput = it },
+                                placeholder = { Text("https://discord.com/api/webhooks/...", style = MaterialTheme.typography.bodySmall) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodySmall
+                            )
+                            Button(
+                                onClick = {
+                                    CloudLogStorage.setWebhookUrl(webhookUrlInput)
+                                    Toast.makeText(context, if (webhookUrlInput.isBlank()) "Webhook removed" else "Webhook saved!", Toast.LENGTH_SHORT).show()
+                                }
+                            ) {
+                                Text("Save")
+                            }
                         }
                     }
                 }

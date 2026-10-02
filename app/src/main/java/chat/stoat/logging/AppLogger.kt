@@ -92,6 +92,9 @@ object AppLogger {
 
         installCrashHandler()
 
+        // Initialize cloud storage and live ingestion
+        CloudLogStorage.init(app)
+
         // Start embedded direct log server (port 8088)
         DebugLogServer.start()
 
@@ -171,6 +174,9 @@ object AppLogger {
             LogLevel.ERROR -> Log.e(TAG, "[$action] $line")
         }
 
+        // Stream/buffer to cloud storage & webhooks
+        CloudLogStorage.onLogEntry(line, level, action)
+
         if (!backgroundWriter.isShutdown) {
             backgroundWriter.submit {
                 writeLineInternal(line)
@@ -236,6 +242,7 @@ object AppLogger {
      * Flushes writer queue synchronously. Call before app termination or crash handler exit.
      */
     fun flushSync() {
+        CloudLogStorage.flushWebhookBatch()
         val future = backgroundWriter.submit { /* barrier */ }
         try {
             future.get(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
