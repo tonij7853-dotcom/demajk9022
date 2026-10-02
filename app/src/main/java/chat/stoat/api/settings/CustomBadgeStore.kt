@@ -52,6 +52,17 @@ class CustomBadgeStore(private val context: Context) {
         save(userId, current)
     }
 
+    /** Toggles [badge] for [userId]. */
+    suspend fun toggleBadge(userId: String, badge: CustomBadge) {
+        val current = getBadges(userId).toMutableSet()
+        if (current.contains(badge)) {
+            current.remove(badge)
+        } else {
+            current.add(badge)
+        }
+        save(userId, current)
+    }
+
     /** Removes [badge] from [userId]. Idempotent. */
     suspend fun removeBadge(userId: String, badge: CustomBadge) {
         val current = getBadges(userId).toMutableSet()

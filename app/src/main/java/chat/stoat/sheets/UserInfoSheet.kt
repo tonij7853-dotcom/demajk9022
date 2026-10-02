@@ -1,6 +1,7 @@
 package chat.stoat.sheets
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,6 +9,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import chat.stoat.api.settings.CustomBadge
+import chat.stoat.api.settings.CustomBadgeStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -127,6 +132,8 @@ fun UserInfoSheet(
     var showMenu by remember { mutableStateOf(false) }
     var showFullAvatar by remember { mutableStateOf(false) }
     var showFullBanner by remember { mutableStateOf(false) }
+    var showCustomBadgeSheet by remember { mutableStateOf(false) }
+    var assignedBadges by remember { mutableStateOf<Set<CustomBadge>>(emptySet()) }
 
     LaunchedEffect(userId) {
         if (user == null) {
@@ -180,6 +187,105 @@ fun UserInfoSheet(
             currentNickname = currentNick,
             onDismissRequest = { showChangeNicknameDialog = false }
         )
+    }
+
+    if (showCustomBadgeSheet && user?.id != null) {
+        val targetUid = user!!.id!!
+        LaunchedEffect(targetUid, showCustomBadgeSheet) {
+            assignedBadges = withContext(Dispatchers.IO) {
+                CustomBadgeStore.get(context).getBadges(targetUid)
+            }
+        }
+        ModalBottomSheet(
+            onDismissRequest = { showCustomBadgeSheet = false }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_shield_crown_24dp),
+                        contentDescription = null,
+                        tint = Color(0xFFFFB300),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        text = "Assign Badges",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Text(
+                    text = "Tap any badge to give or remove it for ${user?.displayName ?: user?.username}:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    CustomBadge.entries.forEach { badge ->
+                        val hasBadge = assignedBadges.contains(badge)
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (hasBadge) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = if (hasBadge) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                            modifier = Modifier.clickable {
+                                scope.launch(Dispatchers.IO) {
+                                    CustomBadgeStore.get(context).toggleBadge(targetUid, badge)
+                                    val updated = CustomBadgeStore.get(context).getBadges(targetUid)
+                                    withContext(Dispatchers.Main) {
+                                        assignedBadges = updated
+                                    }
+                                }
+                            }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                if (badge == CustomBadge.Slut) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_female_24dp),
+                                        contentDescription = null,
+                                        tint = if (hasBadge) MaterialTheme.colorScheme.primary else Color(0xFFE91E63),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                } else {
+                                    Text(text = badge.emoji, fontSize = 14.sp)
+                                }
+                                Text(
+                                    text = badge.label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (hasBadge) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                Button(
+                    onClick = { showCustomBadgeSheet = false },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Done")
+                }
+            }
+        }
     }
 
     if (user == null && !isLoadingUser) {
@@ -548,6 +654,22 @@ fun UserInfoSheet(
                                         painter = painterResource(R.drawable.ic_chat_24dp),
                                         contentDescription = "Message",
                                         tint = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(8.dp).size(18.dp)
+                                    )
+                                }
+
+                                // Owner Give Badge Button
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    modifier = Modifier.clickable {
+                                        showCustomBadgeSheet = true
+                                    }
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_shield_crown_24dp),
+                                        contentDescription = "Give Badge",
+                                        tint = Color(0xFFFFB300),
                                         modifier = Modifier.padding(8.dp).size(18.dp)
                                     )
                                 }

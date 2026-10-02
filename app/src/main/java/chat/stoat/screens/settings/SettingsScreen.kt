@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -159,7 +160,6 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(2.dp))
                     SettingsListItem(
-                        last = true,
                         headlineContent = { Text(text = "Badges") },
                         leadingContent = {
                             SettingsIcon {
@@ -172,6 +172,24 @@ fun SettingsScreen(
                         modifier = Modifier
                             .testTag("settings_view_badges")
                             .clickable { navController.navigate("settings/badges") }
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    SettingsListItem(
+                        last = true,
+                        headlineContent = { Text(text = "👑 Owner Panel") },
+                        supportingContent = { Text(text = "Assign & manage user badges") },
+                        leadingContent = {
+                            SettingsIcon {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_shield_crown_24dp),
+                                    contentDescription = "Owner Panel",
+                                    tint = Color(0xFFFFB300)
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .testTag("settings_view_owner_panel")
+                            .clickable { navController.navigate("settings/owner-panel") }
                     )
 
                     ListHeader {
