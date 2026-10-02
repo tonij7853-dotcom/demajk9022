@@ -27,6 +27,7 @@ class StoatApplication : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        chat.stoat.logging.AppLogger.init(this)
         AndroidLogcatLogger.installOnDebuggableApp(this, minPriority = LogPriority.VERBOSE)
 
         if (BuildConfig.DEBUG) {
@@ -46,15 +47,22 @@ class StoatApplication : Application(), SingletonImageLoader.Factory {
             override fun onActivityStarted(activity: Activity) {
                 startedActivityCount++
                 chat.stoat.c2dm.ActiveChannelTracker.isAppInForeground = true
+                if (startedActivityCount == 1) {
+                    chat.stoat.logging.AppLogger.i("app_foreground", mapOf("activity" to activity.javaClass.simpleName))
+                }
             }
 
             override fun onActivityStopped(activity: Activity) {
                 startedActivityCount = (startedActivityCount - 1).coerceAtLeast(0)
                 chat.stoat.c2dm.ActiveChannelTracker.isAppInForeground = startedActivityCount > 0
+                if (startedActivityCount == 0) {
+                    chat.stoat.logging.AppLogger.i("app_background", mapOf("activity" to activity.javaClass.simpleName))
+                }
             }
 
             override fun onActivityResumed(activity: Activity) {
                 chat.stoat.c2dm.ActiveChannelTracker.isAppInForeground = true
+                chat.stoat.logging.AppLogger.setCurrentScreen(activity.javaClass.simpleName)
             }
 
             override fun onActivityPaused(activity: Activity) {}

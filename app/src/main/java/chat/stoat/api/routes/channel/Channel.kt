@@ -6,6 +6,7 @@ import chat.stoat.api.StoatHttp
 import chat.stoat.api.StoatJson
 import chat.stoat.api.api
 import chat.stoat.api.internals.ULID
+import chat.stoat.logging.AppLogger
 import chat.stoat.core.model.schemas.Channel
 import chat.stoat.core.model.schemas.Message
 import chat.stoat.core.model.schemas.MessagesInChannel
@@ -104,21 +105,35 @@ suspend fun sendMessage(
     attachments: List<String>? = null,
     idempotencyKey: String = ULID.makeNext()
 ): String {
-    val response = StoatHttp.post("/channels/$channelId/messages".api()) {
-        contentType(ContentType.Application.Json)
-        setBody(
-            SendMessageBody(
-                content = content,
-                nonce = nonce,
-                replies = replies ?: emptyList(),
-                attachments = attachments
-            )
+    AppLogger.i(
+        "message_send_started",
+        mapOf(
+            "channel_id" to channelId,
+            "char_count" to content.length,
+            "attachment_count" to (attachments?.size ?: 0),
+            "reply_count" to (replies?.size ?: 0)
         )
-        header("Idempotency-Key", idempotencyKey)
-    }
-        .bodyAsText()
+    )
+    return try {
+        val response = StoatHttp.post("/channels/$channelId/messages".api()) {
+            contentType(ContentType.Application.Json)
+            setBody(
+                SendMessageBody(
+                    content = content,
+                    nonce = nonce,
+                    replies = replies ?: emptyList(),
+                    attachments = attachments
+                )
+            )
+            header("Idempotency-Key", idempotencyKey)
+        }.bodyAsText()
 
-    return response
+        AppLogger.i("message_send_success", mapOf("channel_id" to channelId))
+        response
+    } catch (e: Exception) {
+        AppLogger.e("message_send_failed", mapOf("channel_id" to channelId, "error" to (e.message ?: "")), e)
+        throw e
+    }
 }
 
 suspend fun editMessage(channelId: String, messageId: String, newContent: String? = null) {

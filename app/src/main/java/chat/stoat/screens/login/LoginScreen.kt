@@ -76,6 +76,7 @@ import chat.stoat.api.routes.onboard.needsOnboarding
 import chat.stoat.composables.generic.FormTextField
 import chat.stoat.composables.generic.Weblink
 import chat.stoat.core.model.data.STOAT_WEB_APP
+import chat.stoat.logging.AppLogger
 import chat.stoat.persistence.KVStorage
 import chat.stoat.ui.theme.FragmentMono
 import kotlinx.coroutines.launch
@@ -112,6 +113,7 @@ class LoginViewModel(
         if (_isLoading) return
         _error = null
         _isLoading = true
+        AppLogger.i("user_login_started", mapOf("has_email" to _email.isNotBlank()))
 
         viewModelScope.launch {
             try {
@@ -121,16 +123,19 @@ class LoginViewModel(
                     _error = if (e.message?.startsWith("Unexpected JSON token") == true) {
                         StoatApplication.instance.getString(R.string.service_health_alert_body_default)
                     } else e.message ?: "Unknown error"
+                    AppLogger.w("user_login_failed", mapOf("reason" to "exception", "error" to (_error ?: "")))
                     _isLoading = false
                     return@launch
                 }
                 if (response.error != null) {
                     _error = response.error.type
+                    AppLogger.w("user_login_failed", mapOf("reason" to "api_error", "error" to _error!!))
                     _isLoading = false
                 } else {
                     Log.d("Login", "Checking for MFA")
                     if (response.proceedMfa) {
                         Log.d("Login", "MFA required. Navigating to MFA screen")
+                        AppLogger.i("user_login_mfa_required")
                         _mfaResponse = response
                         _navigateTo = "mfa"
                         _isLoading = false
@@ -149,6 +154,7 @@ class LoginViewModel(
 
                             val onboard = needsOnboarding(token)
                             if (onboard) {
+                                AppLogger.i("user_login_success", mapOf("onboarding" to true))
                                 _navigateTo = "onboarding"
                                 return@launch
                             }
@@ -156,15 +162,18 @@ class LoginViewModel(
                             StoatAPI.loginAs(token)
                             StoatAPI.setSessionId(response.firstUserHints.token)
 
+                            AppLogger.i("user_login_success", mapOf("onboarding" to false))
                             _navigateTo = "home"
                         } catch (e: Throwable) {
                             _error = e.message ?: "Unknown error"
+                            AppLogger.e("user_login_failed", mapOf("reason" to "storage_or_setup_error"), e)
                             _isLoading = false
                         }
                     }
                 }
             } catch (e: Throwable) {
                 _error = e.message ?: "Unknown error"
+                AppLogger.e("user_login_failed", mapOf("reason" to "unexpected_error"), e)
                 _isLoading = false
             }
         }

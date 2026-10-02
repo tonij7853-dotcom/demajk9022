@@ -46,6 +46,7 @@ import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSiz
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -67,6 +68,7 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
+import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -126,6 +128,8 @@ import chat.stoat.screens.settings.MfaSettingsScreen
 import chat.stoat.screens.settings.NotificationsSettingsScreen
 import chat.stoat.screens.settings.OwnerPanelScreen
 import chat.stoat.screens.settings.ProfileSettingsScreen
+import chat.stoat.logging.AppLogger
+import chat.stoat.screens.settings.DebugLogsScreen
 import chat.stoat.screens.settings.SessionSettingsScreen
 import chat.stoat.screens.settings.SettingsScreen
 import chat.stoat.screens.settings.channel.ChannelSettingsHome
@@ -251,6 +255,7 @@ class MainActivityViewModel(
     }
 
     fun logOut() {
+        AppLogger.i("user_logout_started")
         viewModelScope.launch {
             try {
                 chat.stoat.c2dm.DismodPushManager.unregister()
@@ -263,6 +268,7 @@ class MainActivityViewModel(
             kvStorage.remove("selfId")
             kvStorage.remove("selfName")
             kvStorage.remove("selfAvatarUrl")
+            AppLogger.i("user_logout_success")
             startWithDestination("login/greeting")
         }
     }
@@ -502,6 +508,18 @@ fun AppEntrypoint(
     }
 
     val navController = rememberNavController()
+
+    DisposableEffect(navController) {
+        val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
+            val route = destination.route ?: "unknown"
+            AppLogger.setCurrentScreen(route)
+            AppLogger.i("screen_navigated", mapOf("destination" to route))
+        }
+        navController.addOnDestinationChangedListener(listener)
+        onDispose {
+            navController.removeOnDestinationChangedListener(listener)
+        }
+    }
 
     StoatTheme(
         requestedTheme = LoadedSettings.theme,
@@ -766,6 +784,7 @@ fun AppEntrypoint(
                     composable("settings/language") { LanguagePickerSettingsScreen(navController) }
                     composable("settings/badges") { BadgesScreen(navController) }
                     composable("settings/owner-panel") { OwnerPanelScreen(navController) }
+                    composable("settings/debug-logs") { DebugLogsScreen(navController) }
 
                     composable("settings/channel/{channelId}") { backStackEntry ->
                         val channelId = backStackEntry.arguments?.getString("channelId") ?: ""

@@ -52,6 +52,7 @@ import androidx.navigation.NavController
 import chat.stoat.R
 import chat.stoat.api.StoatAPI
 import chat.stoat.api.routes.microservices.autumn.uploadToAutumn
+import chat.stoat.logging.AppLogger
 import chat.stoat.api.routes.user.fetchUserProfile
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -251,6 +252,7 @@ class ProfileSettingsScreenViewModel(val context: Application) :
         }
 
         isSavingPfp = true
+        AppLogger.i("profile_save_avatar_started", mapOf("uri" to uri.toString()))
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val (mFile, contentType) = prepareImageForUpload(uri, "avatar")
@@ -265,6 +267,7 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                 )
 
                 patchSelf(avatar = id)
+                AppLogger.i("profile_save_avatar_success", mapOf("autumn_id" to id, "size_bytes" to mFile.length()))
 
                 withContext(Dispatchers.Main) {
                     pfpModel = StoatAPI.userCache[StoatAPI.selfId]?.avatar?.id?.let {
@@ -276,6 +279,7 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                     Toast.makeText(context, "Profile picture saved in full quality!", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
+                AppLogger.e("profile_save_avatar_failed", mapOf("error" to (e.message ?: "")), e)
                 withContext(Dispatchers.Main) {
                     uploadError = e.message
                     uploadProgress = 0f
@@ -296,6 +300,7 @@ class ProfileSettingsScreenViewModel(val context: Application) :
         }
 
         isSavingBanner = true
+        AppLogger.i("profile_save_banner_started", mapOf("uri" to uri.toString()))
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val (mFile, contentType) = prepareImageForUpload(uri, "background")
@@ -310,6 +315,7 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                 )
 
                 patchSelf(background = id)
+                AppLogger.i("profile_save_banner_success", mapOf("autumn_id" to id, "size_bytes" to mFile.length()))
 
                 val profile = StoatAPI.selfId?.let { fetchUserProfile(it) }
                 withContext(Dispatchers.Main) {
@@ -326,6 +332,7 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                     Toast.makeText(context, "Banner saved in full quality!", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
+                AppLogger.e("profile_save_banner_failed", mapOf("error" to (e.message ?: "")), e)
                 withContext(Dispatchers.Main) {
                     uploadError = e.message
                     uploadProgress = 0f
@@ -337,6 +344,7 @@ class ProfileSettingsScreenViewModel(val context: Application) :
     }
 
     fun removePfp() {
+        AppLogger.i("profile_remove_avatar")
         pendingPfpUri = null
         viewModelScope.launch {
             patchSelf(remove = listOf("Avatar"))
@@ -346,6 +354,7 @@ class ProfileSettingsScreenViewModel(val context: Application) :
     }
 
     fun removeBackground() {
+        AppLogger.i("profile_remove_banner")
         pendingBannerUri = null
         viewModelScope.launch {
             patchSelf(remove = listOf("ProfileBackground"))

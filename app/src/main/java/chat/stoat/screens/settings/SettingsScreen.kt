@@ -267,12 +267,12 @@ fun SettingsScreen(
                         !miscLastIsExperiments && FeatureFlags.labsAccessControlGranted
                     val miscLastIsDebug =
                         !miscLastIsExperiments && !miscLastIsLabs && BuildConfig.DEBUG
-                    val miscLastIsAbout =
+                    val miscLastIsLogs =
                         !miscLastIsExperiments && !miscLastIsLabs && !miscLastIsDebug
 
                     SettingsListItem(
                         first = true,
-                        last = miscLastIsAbout,
+                        last = false,
                         headlineContent = { Text(text = stringResource(id = R.string.about)) },
                         leadingContent = {
                             SettingsIcon {
@@ -285,6 +285,24 @@ fun SettingsScreen(
                         modifier = Modifier
                             .testTag("settings_view_about")
                             .clickable { navController.navigate("about") }
+                    )
+
+                    Spacer(Modifier.height(2.dp))
+                    SettingsListItem(
+                        last = miscLastIsLogs,
+                        headlineContent = { Text(text = "Debug Logs") },
+                        supportingContent = { Text(text = "Export and diagnose logs for AI") },
+                        leadingContent = {
+                            SettingsIcon {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_file_export_24dp),
+                                    contentDescription = null,
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .testTag("settings_view_debug_logs")
+                            .clickable { navController.navigate("settings/debug-logs") }
                     )
 
                     if (BuildConfig.DEBUG && LoadedSettings.experimentsEnabled) {

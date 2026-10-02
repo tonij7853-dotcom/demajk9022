@@ -77,6 +77,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import chat.stoat.util.AnimatedGifEncoder
+import chat.stoat.logging.AppLogger
 import com.bumptech.glide.gifdecoder.GifDecoder
 import com.bumptech.glide.gifdecoder.GifHeaderParser
 import com.bumptech.glide.gifdecoder.StandardGifDecoder
@@ -247,6 +248,7 @@ fun ImageCropperDialog(
                             if (isGif) {
                                 if (isProcessingCrop) return@IconButton
                                 isProcessingCrop = true
+                                AppLogger.i("crop_button_clicked", mapOf("type" to "gif", "uri" to imageUri.toString()))
                                 coroutineScope.launch(Dispatchers.IO) {
                                     try {
                                         val croppedUri = performGifCrop(
@@ -258,11 +260,13 @@ fun ImageCropperDialog(
                                             viewportSize = viewportSize,
                                             targetAspect = targetAspectRatio
                                         )
+                                        AppLogger.i("crop_success", mapOf("type" to "gif", "result_uri" to croppedUri.toString()))
                                         withContext(Dispatchers.Main) {
                                             isProcessingCrop = false
                                             onCropSuccess(croppedUri)
                                         }
                                     } catch (e: Exception) {
+                                        AppLogger.e("crop_failed", mapOf("type" to "gif", "error" to (e.message ?: "")), e)
                                         e.printStackTrace()
                                         withContext(Dispatchers.Main) {
                                             isProcessingCrop = false
@@ -627,6 +631,17 @@ private suspend fun performGifCrop(
     val bytes = context.contentResolver.openInputStream(gifUri)?.use { it.readBytes() }
         ?: return@withContext gifUri
 
+    val cropStartTime = System.currentTimeMillis()
+    AppLogger.i("gif_crop_started", mapOf(
+        "uri" to gifUri.toString(),
+        "scale" to scale,
+        "offset_x" to offset.x,
+        "offset_y" to offset.y,
+        "rotation" to rotation,
+        "targetAspect" to targetAspect,
+        "raw_bytes" to bytes.size
+    ))
+
     val bitmapProvider = object : GifDecoder.BitmapProvider {
         override fun obtain(width: Int, height: Int, config: Bitmap.Config): Bitmap =
             Bitmap.createBitmap(width, height, config)
@@ -645,7 +660,10 @@ private suspend fun performGifCrop(
 
     val decoder = StandardGifDecoder(bitmapProvider, header, java.nio.ByteBuffer.wrap(bytes))
     val frameCount = decoder.frameCount
-    if (frameCount <= 0) return@withContext gifUri
+    if (frameCount <= 0) {
+        AppLogger.w("gif_crop_empty_frames", mapOf("uri" to gifUri.toString(), "frameCount" to frameCount))
+        return@withContext gifUri
+    }
 
     val srcW = decoder.width.toFloat()
     val srcH = decoder.height.toFloat()
@@ -700,6 +718,16 @@ private suspend fun performGifCrop(
         1
     }
 
+    AppLogger.i("gif_decode_header", mapOf(
+        "frameCount" to frameCount,
+        "srcW" to srcW,
+        "srcH" to srcH,
+        "outW" to outW,
+        "outH" to outH,
+        "step" to step
+    ))
+
+    var encodedFrames = 0
     try {
         for (i in 0 until frameCount) {
             decoder.advance()
@@ -716,12 +744,20 @@ private suspend fun performGifCrop(
                 encoder.setDelay((effectiveDelay * step).coerceAtLeast(20))
                 encoder.addFrame(outBitmap)
                 outBitmap.recycle()
+                encodedFrames++
             }
         }
     } finally {
         encoder.finish()
         outStream.close()
     }
+
+    val durationMs = System.currentTimeMillis() - cropStartTime
+    AppLogger.i("gif_crop_finished", mapOf(
+        "encoded_frames" to encodedFrames,
+        "final_file_size" to cacheFile.length(),
+        "duration_ms" to durationMs
+    ))
 
     cacheFile.toUri()
 }

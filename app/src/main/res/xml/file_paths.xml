@@ -8,7 +8,10 @@
     <cache-path
         path="updates/"
         name="updates" />
-    <external-cache-path
-        path="updates/"
-        name="external_updates" />
+    <files-path
+        path="logs/"
+        name="app_logs" />
+    <cache-path
+        path="logs/"
+        name="cache_logs" />
 </paths>

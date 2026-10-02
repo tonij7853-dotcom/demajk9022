@@ -124,6 +124,7 @@ val StoatHttp = HttpClient(OkHttp) {
         .build()
 
     engine {
+        addInterceptor(chat.stoat.logging.AppLogger.createOkHttpInterceptor())
         addInterceptor { chain ->
             val request = chain.request().newBuilder()
                 .apply {

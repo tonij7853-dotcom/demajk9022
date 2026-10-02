@@ -137,6 +137,7 @@ import chat.stoat.activities.StoatTweenFloat
 import chat.stoat.activities.StoatTweenInt
 import chat.stoat.api.StoatAPI
 import chat.stoat.api.internals.ChannelUtils
+import chat.stoat.logging.AppLogger
 import chat.stoat.api.internals.PermissionBit
 import chat.stoat.api.internals.has
 import chat.stoat.api.routes.channel.react
@@ -297,6 +298,7 @@ fun ChannelScreen(
         slowmodeEnabled && !slowmodeImmune && slowmodeRemainingSeconds > 0
 
     LaunchedEffect(channelId) {
+        AppLogger.i("channel_opened", mapOf("channel_id" to channelId))
         chat.stoat.c2dm.ActiveChannelTracker.activeChannelId = channelId
         viewModel.switchChannel(channelId)
         val lastMsgId = StoatAPI.channelCache[channelId]?.lastMessageID ?: ULID.makeNext()
@@ -369,9 +371,19 @@ fun ChannelScreen(
                     pickerIdentifier != null &&
                     viewModel.draftAttachments.any { it.pickerIdentifier == pickerIdentifier }
                 ) {
+                    AppLogger.i("user_attach_file_removed", mapOf("filename" to (file.name ?: "attachment")))
                     viewModel.draftAttachments.removeIf { it.pickerIdentifier == pickerIdentifier }
                     return@let
                 }
+
+                AppLogger.i(
+                    "user_attach_file_selected",
+                    mapOf(
+                        "filename" to (file.name ?: "attachment"),
+                        "mime_type" to (file.type ?: "unknown"),
+                        "size_bytes" to mFile.length()
+                    )
+                )
 
                 viewModel.draftAttachments.add(
                     FileArgs(
