@@ -31,6 +31,7 @@ import androidx.core.content.FileProvider
 import androidx.navigation.NavController
 import chat.stoat.R
 import chat.stoat.logging.AppLogger
+import chat.stoat.logging.DebugLogServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -153,6 +154,104 @@ fun DebugLogsScreen(navController: NavController) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // ── LIVE DEBUG SERVER STATUS & DIRECT CONNECT ──
+            var showServerDetails by remember { mutableStateOf(false) }
+            val localIp = remember { DebugLogServer.getLocalIpAddress() }
+            val port = DebugLogServer.activePort
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showServerDetails = !showServerDetails },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF4CAF50))
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Live Log Server: Active (Port $port)",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = if (showServerDetails) "Hide Info" else "Direct Connect Info",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    if (showServerDetails) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Direct fetch endpoints for AI debugging (no copy-paste needed):",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(6.dp))
+
+                        if (localIp != null) {
+                            val wifiUrl = "http://$localIp:$port/logs"
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                    .clickable {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("Live Wi-Fi URL", wifiUrl))
+                                        Toast.makeText(context, "Copied Wi-Fi URL to clipboard!", Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Wi-Fi Direct Fetch URL", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    Text(wifiUrl, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), fontSize = 11.sp)
+                                }
+                                Icon(painter = painterResource(R.drawable.ic_content_copy_24dp), contentDescription = "Copy", modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(Modifier.height(4.dp))
+                        }
+
+                        val adbCmd = "adb forward tcp:$port tcp:$port"
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                .clickable {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("ADB Command", adbCmd))
+                                    Toast.makeText(context, "Copied ADB command to clipboard!", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("USB ADB Forward Command", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                Text(adbCmd, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), fontSize = 11.sp)
+                            }
+                            Icon(painter = painterResource(R.drawable.ic_content_copy_24dp), contentDescription = "Copy", modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+
             // ── EXPORT ACTION BUTTONS (Copy 200, Copy Errors, Share, Clear, Test Error) ──
             Column(
                 modifier = Modifier

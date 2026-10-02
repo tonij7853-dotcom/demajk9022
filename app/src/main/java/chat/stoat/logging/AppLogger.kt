@@ -36,7 +36,7 @@ object AppLogger {
     private const val MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024L // ~2 MB per file
     private const val MAX_BACKUP_FILES = 2 // app.log + app.log.1 + app.log.2 = 3 files total (~6 MB max)
 
-    private val sessionId = UUID.randomUUID().toString()
+    val sessionId = UUID.randomUUID().toString()
     private val backgroundWriter = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "AppLogger-Writer").apply { isDaemon = true }
     }
@@ -44,6 +44,8 @@ object AppLogger {
     private var appContext: Context? = null
     private var logsDir: File? = null
     private var activeLogFile: File? = null
+    private var externalLogsDir: File? = null
+    private var activeExternalLogFile: File? = null
     private var isInitialized = false
 
     @Volatile
@@ -67,7 +69,8 @@ object AppLogger {
 
     /**
      * Initializes the logger with the application context, creates the log directory,
-     * installs uncaught exception crash handler, and records app launch.
+     * installs uncaught exception crash handler, starts the embedded local debug server,
+     * and records app launch.
      */
     fun init(context: Context) {
         if (isInitialized) return
@@ -75,9 +78,22 @@ object AppLogger {
         appContext = app
         logsDir = File(app.filesDir, "logs").apply { if (!exists()) mkdirs() }
         activeLogFile = File(logsDir, "app.log")
+
+        try {
+            val extDir = app.getExternalFilesDir("logs")
+            if (extDir != null) {
+                if (!extDir.exists()) extDir.mkdirs()
+                externalLogsDir = extDir
+                activeExternalLogFile = File(extDir, "app.log")
+            }
+        } catch (_: Exception) {}
+
         isInitialized = true
 
         installCrashHandler()
+
+        // Start embedded direct log server (port 8088)
+        DebugLogServer.start()
 
         i(
             action = "app_launch_started",
@@ -86,7 +102,8 @@ object AppLogger {
                 "version_code" to BuildConfig.VERSION_CODE,
                 "android_sdk" to Build.VERSION.SDK_INT,
                 "device_model" to "${Build.MANUFACTURER} ${Build.MODEL}",
-                "session_id" to sessionId
+                "session_id" to sessionId,
+                "debug_server_port" to DebugLogServer.activePort
             )
         )
     }
@@ -163,42 +180,55 @@ object AppLogger {
 
     @Synchronized
     private fun writeLineInternal(line: String) {
-        val file = activeLogFile ?: return
-        try {
-            rotateLogsIfNeeded(file)
-            FileOutputStream(file, true).use { fos ->
-                fos.write(line.toByteArray(Charsets.UTF_8))
-                fos.flush()
+        val file = activeLogFile
+        if (file != null) {
+            try {
+                rotateLogsIfNeeded(file, logsDir)
+                FileOutputStream(file, true).use { fos ->
+                    fos.write(line.toByteArray(Charsets.UTF_8))
+                    fos.flush()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed writing log line to internal disk", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed writing log line to disk", e)
+        }
+
+        val extFile = activeExternalLogFile
+        if (extFile != null) {
+            try {
+                rotateLogsIfNeeded(extFile, externalLogsDir)
+                FileOutputStream(extFile, true).use { fos ->
+                    fos.write(line.toByteArray(Charsets.UTF_8))
+                    fos.flush()
+                }
+            } catch (_: Exception) {}
         }
     }
 
     /**
      * Size-based log rotation: Keeps app.log, app.log.1, and app.log.2 (~2 MB each).
      */
-    private fun rotateLogsIfNeeded(activeFile: File) {
+    private fun rotateLogsIfNeeded(activeFile: File, dir: File?) {
         if (!activeFile.exists() || activeFile.length() < MAX_FILE_SIZE_BYTES) return
 
-        val dir = logsDir ?: activeFile.parentFile ?: return
+        val targetDir = dir ?: activeFile.parentFile ?: return
         try {
             // Delete oldest backup: app.log.2
-            val oldest = File(dir, "app.log.$MAX_BACKUP_FILES")
+            val oldest = File(targetDir, "app.log.$MAX_BACKUP_FILES")
             if (oldest.exists()) oldest.delete()
 
             // Shift older backups: app.log.1 -> app.log.2
             for (i in (MAX_BACKUP_FILES - 1) downTo 1) {
-                val current = File(dir, "app.log.$i")
-                val next = File(dir, "app.log.${i + 1}")
+                val current = File(targetDir, "app.log.$i")
+                val next = File(targetDir, "app.log.${i + 1}")
                 if (current.exists()) current.renameTo(next)
             }
 
             // Rotate current app.log -> app.log.1
-            val firstBackup = File(dir, "app.log.1")
+            val firstBackup = File(targetDir, "app.log.1")
             activeFile.renameTo(firstBackup)
         } catch (e: Exception) {
-            Log.e(TAG, "Error rotating log files", e)
+            Log.e(TAG, "Error rotating log files in ${targetDir.absolutePath}", e)
         }
     }
 
@@ -348,10 +378,18 @@ object AppLogger {
      */
     fun clearLogs(): Boolean {
         return try {
-            val dir = logsDir ?: return false
-            val files = dir.listFiles { _, name -> name.startsWith("app.log") } ?: emptyArray()
-            files.forEach { it.delete() }
-            activeLogFile = File(dir, "app.log")
+            val dir = logsDir
+            if (dir != null) {
+                val files = dir.listFiles { _, name -> name.startsWith("app.log") } ?: emptyArray()
+                files.forEach { it.delete() }
+                activeLogFile = File(dir, "app.log")
+            }
+            val extDir = externalLogsDir
+            if (extDir != null) {
+                val extFiles = extDir.listFiles { _, name -> name.startsWith("app.log") } ?: emptyArray()
+                extFiles.forEach { it.delete() }
+                activeExternalLogFile = File(extDir, "app.log")
+            }
             i("logs_cleared", mapOf("reason" to "User cleared logs from Debug screen"))
             true
         } catch (e: Exception) {
