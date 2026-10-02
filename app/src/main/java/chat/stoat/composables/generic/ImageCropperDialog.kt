@@ -76,6 +76,10 @@ import com.bumptech.glide.integration.compose.GlideImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import chat.stoat.util.AnimatedGifEncoder
+import com.bumptech.glide.gifdecoder.GifDecoder
+import com.bumptech.glide.gifdecoder.GifHeaderParser
+import com.bumptech.glide.gifdecoder.StandardGifDecoder
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -241,8 +245,32 @@ fun ImageCropperDialog(
                     IconButton(
                         onClick = {
                             if (isGif) {
-                                // Preserve full animated GIF playback
-                                onCropSuccess(imageUri)
+                                if (isProcessingCrop) return@IconButton
+                                isProcessingCrop = true
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    try {
+                                        val croppedUri = performGifCrop(
+                                            context = context,
+                                            gifUri = imageUri,
+                                            scale = scale,
+                                            offset = offset,
+                                            rotation = rotationDegrees,
+                                            viewportSize = viewportSize,
+                                            targetAspect = targetAspectRatio
+                                        )
+                                        withContext(Dispatchers.Main) {
+                                            isProcessingCrop = false
+                                            onCropSuccess(croppedUri)
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                        withContext(Dispatchers.Main) {
+                                            isProcessingCrop = false
+                                            // Fallback: if crop fails, use original
+                                            onCropSuccess(imageUri)
+                                        }
+                                    }
+                                }
                                 return@IconButton
                             }
 
@@ -520,7 +548,7 @@ fun ImageCropperDialog(
 
 /**
  * Performs crop and rotation transforms on background thread, producing a clean,
- * high-resolution cropped image file.
+ * high-resolution cropped image file that exactly matches what the user previewed.
  */
 private suspend fun performCrop(
     context: Context,
@@ -532,57 +560,157 @@ private suspend fun performCrop(
     targetAspect: Float,
     cropShape: CropShape
 ): Uri = withContext(Dispatchers.IO) {
-    // 1. Apply user rotation if any
-    val rotated = if (rotation % 360 != 0) {
-        val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
-        Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
-    } else {
-        source
-    }
-
-    val srcW = rotated.width.toFloat()
-    val srcH = rotated.height.toFloat()
+    val srcW = source.width.toFloat()
+    val srcH = source.height.toFloat()
 
     val vpW = if (viewportSize.width > 0) viewportSize.width.toFloat() else 1080f
     val vpH = if (viewportSize.height > 0) viewportSize.height.toFloat() else (1080f / targetAspect)
 
-    // Base fitting scale (ContentScale.Fit inside viewport)
-    val baseScale = minOf(vpW / srcW, vpH / srcH)
-    val totalScale = baseScale * scale
+    val maxSrc = maxOf(srcW, srcH)
+    val outMax = maxSrc.coerceIn(720f, 2048f)
+    val outW: Float
+    val outH: Float
+    if (targetAspect >= 1f) {
+        outW = outMax
+        outH = outMax / targetAspect
+    } else {
+        outH = outMax
+        outW = outMax * targetAspect
+    }
 
-    val displayedW = srcW * totalScale
-    val displayedH = srcH * totalScale
+    val matrix = Matrix()
+    val fitScale = minOf(vpW / srcW, vpH / srcH)
+    val fittedLeft = (vpW - srcW * fitScale) / 2f
+    val fittedTop = (vpH - srcH * fitScale) / 2f
+    matrix.postScale(fitScale, fitScale)
+    matrix.postTranslate(fittedLeft, fittedTop)
 
-    // Viewport center in image coordinates
-    val imgCenterX = (displayedW / 2f) + offset.x
-    val imgCenterY = (displayedH / 2f) + offset.y
+    val centerX = vpW / 2f
+    val centerY = vpH / 2f
+    matrix.postRotate(rotation.toFloat(), centerX, centerY)
+    matrix.postScale(scale, scale, centerX, centerY)
+    matrix.postTranslate(offset.x, offset.y)
 
-    // Viewport bounds mapped to image space
-    val cropLeftDisp = (displayedW / 2f) - (vpW / 2f) - offset.x
-    val cropTopDisp = (displayedH / 2f) - (vpH / 2f) - offset.y
+    val outScaleX = outW / vpW
+    val outScaleY = outH / vpH
+    matrix.postScale(outScaleX, outScaleY)
 
-    val cropLeftSrc = (cropLeftDisp / totalScale).coerceIn(0f, srcW - 1f)
-    val cropTopSrc = (cropTopDisp / totalScale).coerceIn(0f, srcH - 1f)
+    val cropped = Bitmap.createBitmap(outW.toInt().coerceAtLeast(1), outH.toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(cropped)
+    val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG)
+    canvas.drawBitmap(source, matrix, paint)
 
-    val cropWidthSrc = (vpW / totalScale).coerceIn(1f, srcW - cropLeftSrc)
-    val cropHeightSrc = (vpH / totalScale).coerceIn(1f, srcH - cropTopSrc)
-
-    // Crop sub-bitmap
-    val cropped = Bitmap.createBitmap(
-        rotated,
-        cropLeftSrc.toInt(),
-        cropTopSrc.toInt(),
-        cropWidthSrc.toInt(),
-        cropHeightSrc.toInt()
-    )
-
-    // Save to cache file
     val filename = "crop_${System.currentTimeMillis()}.png"
     val cacheFile = File(context.cacheDir, filename)
     cacheFile.outputStream().use { out ->
         cropped.compress(Bitmap.CompressFormat.PNG, 100, out)
         out.flush()
     }
+    cropped.recycle()
+
+    cacheFile.toUri()
+}
+
+/**
+ * Performs frame-by-frame crop and rotation on animated GIFs, preserving all frames,
+ * frame timings, and animation loops.
+ */
+private suspend fun performGifCrop(
+    context: Context,
+    gifUri: Uri,
+    scale: Float,
+    offset: Offset,
+    rotation: Int,
+    viewportSize: IntSize,
+    targetAspect: Float
+): Uri = withContext(Dispatchers.IO) {
+    val bytes = context.contentResolver.openInputStream(gifUri)?.use { it.readBytes() }
+        ?: return@withContext gifUri
+
+    val bitmapProvider = object : GifDecoder.BitmapProvider {
+        override fun obtain(width: Int, height: Int, config: Bitmap.Config): Bitmap =
+            Bitmap.createBitmap(width, height, config)
+        override fun release(bitmap: Bitmap) {
+            if (!bitmap.isRecycled) bitmap.recycle()
+        }
+        override fun obtainByteArray(size: Int): ByteArray = ByteArray(size)
+        override fun release(bytes: ByteArray) {}
+        override fun obtainIntArray(size: Int): IntArray = IntArray(size)
+        override fun release(array: IntArray) {}
+    }
+
+    val parser = GifHeaderParser()
+    parser.setData(bytes)
+    val header = parser.parseHeader()
+
+    val decoder = StandardGifDecoder(bitmapProvider, header, java.nio.ByteBuffer.wrap(bytes))
+    val frameCount = decoder.frameCount
+    if (frameCount <= 0) return@withContext gifUri
+
+    val srcW = decoder.width.toFloat()
+    val srcH = decoder.height.toFloat()
+
+    val vpW = if (viewportSize.width > 0) viewportSize.width.toFloat() else 1080f
+    val vpH = if (viewportSize.height > 0) viewportSize.height.toFloat() else (1080f / targetAspect)
+
+    val maxDim = if (targetAspect >= 1.5f) 720f else 480f
+    val outW: Float
+    val outH: Float
+    if (targetAspect >= 1f) {
+        outW = maxDim
+        outH = maxDim / targetAspect
+    } else {
+        outH = maxDim
+        outW = maxDim * targetAspect
+    }
+
+    val matrix = Matrix()
+    val fitScale = minOf(vpW / srcW, vpH / srcH)
+    val fittedLeft = (vpW - srcW * fitScale) / 2f
+    val fittedTop = (vpH - srcH * fitScale) / 2f
+    matrix.postScale(fitScale, fitScale)
+    matrix.postTranslate(fittedLeft, fittedTop)
+
+    val centerX = vpW / 2f
+    val centerY = vpH / 2f
+    matrix.postRotate(rotation.toFloat(), centerX, centerY)
+    matrix.postScale(scale, scale, centerX, centerY)
+    matrix.postTranslate(offset.x, offset.y)
+
+    val outScaleX = outW / vpW
+    val outScaleY = outH / vpH
+    matrix.postScale(outScaleX, outScaleY)
+
+    val filename = "crop_${System.currentTimeMillis()}.gif"
+    val cacheFile = File(context.cacheDir, filename)
+    val outStream = FileOutputStream(cacheFile)
+
+    val encoder = AnimatedGifEncoder()
+    encoder.start(outStream)
+    encoder.setRepeat(0)
+
+    val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG)
+
+    val step = if (frameCount > 80) (frameCount / 60).coerceAtLeast(1) else 1
+
+    for (i in 0 until frameCount) {
+        decoder.advance()
+        val frame = decoder.nextFrame
+        val delay = decoder.nextDelay
+
+        if (i % step == 0 && frame != null) {
+            val outBitmap = Bitmap.createBitmap(outW.toInt().coerceAtLeast(1), outH.toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(outBitmap)
+            canvas.drawBitmap(frame, matrix, paint)
+
+            encoder.setDelay((delay * step).coerceAtLeast(20))
+            encoder.addFrame(outBitmap)
+            outBitmap.recycle()
+        }
+    }
+
+    encoder.finish()
+    outStream.close()
 
     cacheFile.toUri()
 }

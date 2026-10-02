@@ -194,8 +194,8 @@ fun InlineMediaPickerMediaPicker(
                             Modifier.clip(CircleShape)
                         }
                     )
-                    .width(82.dp)
-                    .height(82.dp)
+                    .width(96.dp)
+                    .height(96.dp)
             } else {
                 Modifier
                     .clip(RoundedCornerShape(16.dp))
@@ -203,8 +203,7 @@ fun InlineMediaPickerMediaPicker(
                     .height(160.dp)
             }.clickable {
                 if (enabled) documentsUiLauncher.launch(mimeType)
-            },
-            transition = CrossFade,
+            }
         )
     } else {
         Box(
@@ -217,8 +216,8 @@ fun InlineMediaPickerMediaPicker(
                             Modifier.clip(CircleShape)
                         }
                     )
-                    .width(82.dp)
-                    .height(82.dp)
+                    .width(96.dp)
+                    .height(96.dp)
             } else {
                 Modifier
                     .clip(RoundedCornerShape(16.dp))

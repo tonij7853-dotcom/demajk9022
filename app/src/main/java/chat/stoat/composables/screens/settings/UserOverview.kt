@@ -199,7 +199,7 @@ fun RawUserOverview(
                 rawUrl = pfpUrl,
                 userId = user.id ?: ULID.makeSpecial(0),
                 avatar = user.avatar,
-                size = if (cardHeight > 128.dp) 76.dp else 48.dp,
+                size = if (cardHeight > 128.dp) 88.dp else 56.dp,
                 decorationId = avatarDecoration,
                 presence = presenceFromStatus(user.status?.presence, user.online ?: false),
                 onClick = { showFullAvatar = true }
