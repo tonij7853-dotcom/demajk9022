@@ -142,24 +142,31 @@ if (-not $result) {
     $result = Try-HttpFetch $httpUrl
 }
 
-# Strategy 2: If localhost failed and ADB exists, attempt ADB forward
-if (-not $result -and -not $Ip -and $adb) {
-    Write-Host "Direct HTTP unreachable. Checking ADB connection..." -ForegroundColor Yellow
+# Check if an ADB device is physically connected
+$hasDevice = $false
+if ($adb) {
     try {
-        $devices = & $adb devices
-        if ($devices -match "(?m)^([^\s]+)\s+device$") {
-            Write-Host "Device detected via ADB. Setting up port forwarding (tcp:$Port -> tcp:$Port)..." -ForegroundColor Yellow
-            & $adb forward tcp:$Port tcp:$Port
-            Start-Sleep -Milliseconds 300
-            $result = Try-HttpFetch "http://localhost:${Port}${endpointPath}"
+        $devCheck = & $adb devices
+        if ($devCheck -match "(?m)^([^\s]+)\s+device$") {
+            $hasDevice = $true
         }
+    } catch {}
+}
+
+# Strategy 2: If localhost failed and ADB device exists, attempt ADB forward
+if (-not $result -and -not $Ip -and $hasDevice) {
+    Write-Host "Setting up ADB port forwarding (tcp:$Port -> tcp:$Port)..." -ForegroundColor Yellow
+    try {
+        & $adb forward tcp:$Port tcp:$Port
+        Start-Sleep -Milliseconds 300
+        $result = Try-HttpFetch "http://localhost:${Port}${endpointPath}"
     } catch {
         Write-Warning "ADB forward attempt failed: $_"
     }
 }
 
 # Strategy 3: Direct internal storage read via run-as
-if (-not $result -and $adb -and -not $Status -and -not $Clear) {
+if (-not $result -and $hasDevice -and -not $Status -and -not $Clear) {
     Write-Host "Attempting ADB run-as cat files/logs/app.log..." -ForegroundColor Yellow
     $packageNames = @("com.dismod.app.debug", "chat.stoat", "com.dismod.app")
     foreach ($pkg in $packageNames) {
@@ -175,7 +182,7 @@ if (-not $result -and $adb -and -not $Status -and -not $Clear) {
 }
 
 # Strategy 4: External storage read
-if (-not $result -and $adb -and -not $Status -and -not $Clear) {
+if (-not $result -and $hasDevice -and -not $Status -and -not $Clear) {
     Write-Host "Attempting ADB external storage read..." -ForegroundColor Yellow
     $paths = @(
         "/sdcard/Android/data/com.dismod.app.debug/files/logs/app.log",
@@ -194,7 +201,7 @@ if (-not $result -and $adb -and -not $Status -and -not $Clear) {
 }
 
 # Strategy 5: Logcat fallback
-if (-not $result -and $adb -and -not $Status -and -not $Clear) {
+if (-not $result -and $hasDevice -and -not $Status -and -not $Clear) {
     Write-Host "Attempting ADB logcat filter (AppLogger:V)..." -ForegroundColor Yellow
     try {
         $logcatOut = & $adb logcat -d -s AppLogger:V 2>$null

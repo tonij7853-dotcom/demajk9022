@@ -152,13 +152,21 @@ fun OverviewScreen(
 
     if (showFullBanner && profile?.background != null) {
         val background = profile?.background
-        val bgUrl = "$STOAT_FILES/backgrounds/${if (background is AutumnResource) background.id else null}/${if (background is AutumnResource) background.filename else background}"
-        AvatarViewerDialog(
-            avatarUrl = bgUrl,
-            username = user?.username ?: "user",
-            displayName = "Banner",
-            onDismissRequest = { showFullBanner = false }
-        )
+        val bgUrl = when {
+            background?.id != null && background.filename != null ->
+                "$STOAT_FILES/backgrounds/${background.id}/${background.filename}"
+            background?.id != null ->
+                "$STOAT_FILES/backgrounds/${background.id}/original"
+            else -> null
+        }
+        if (bgUrl != null) {
+            AvatarViewerDialog(
+                avatarUrl = bgUrl,
+                username = user?.username ?: "user",
+                displayName = "Banner",
+                onDismissRequest = { showFullBanner = false }
+            )
+        }
     }
 
     Scaffold(
@@ -258,15 +266,24 @@ fun OverviewScreen(
                     ) {
                         val background = profile?.background
                         if (background != null) {
-                            val bgUrl = "$STOAT_FILES/backgrounds/${if (background is AutumnResource) background.id else null}/${if (background is AutumnResource) background.filename else background}"
-                            RemoteImage(
-                                url = bgUrl,
-                                description = null,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clickable { showFullBanner = true },
-                                contentScale = ContentScale.Crop
-                            )
+                            val bgUrl = when {
+                                background.id != null && background.filename != null ->
+                                    "$STOAT_FILES/backgrounds/${background.id}/${background.filename}"
+                                background.id != null ->
+                                    "$STOAT_FILES/backgrounds/${background.id}/original"
+                                else -> null
+                            }
+                            if (bgUrl != null) {
+                                RemoteImage(
+                                    url = bgUrl,
+                                    description = null,
+                                    forceAnimate = true,  // enable GIF animation for profile banners
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clickable { showFullBanner = true },
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
                         } else {
                             Box(
                                 modifier = Modifier

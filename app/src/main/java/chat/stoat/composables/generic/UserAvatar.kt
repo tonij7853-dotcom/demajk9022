@@ -176,8 +176,21 @@ fun UserAvatar(
         contentAlignment = Alignment.BottomEnd
     ) {
         if (avatar != null) {
+            val avatarUrl = if (rawUrl != null) {
+                if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://") || rawUrl.startsWith("file://") || rawUrl.startsWith("content://")) {
+                    rawUrl
+                } else {
+                    "$STOAT_FILES/avatars/$rawUrl/original"
+                }
+            } else {
+                when {
+                    avatar.filename != null -> "$STOAT_FILES/avatars/${avatar.id}/${avatar.filename}"
+                    isGifAvatar -> "$STOAT_FILES/avatars/${avatar.id}/original"
+                    else -> "$STOAT_FILES/avatars/${avatar.id}"
+                }
+            }
             RemoteImage(
-                url = rawUrl ?: "$STOAT_FILES/avatars/${avatar.id}",
+                url = avatarUrl,
                 contentScale = ContentScale.Crop,
                 description = stringResource(id = R.string.avatar_alt, username),
                 allowAnimation = allowAnimation,

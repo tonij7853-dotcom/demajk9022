@@ -372,15 +372,25 @@ fun UserInfoSheet(
                 ) {
                     val background = profile?.background
                     if (background != null) {
-                        val bgUrl = "$STOAT_FILES/backgrounds/${if (background is AutumnResource) background.id else null}/${if (background is AutumnResource) background.filename else background}"
-                        RemoteImage(
-                            url = bgUrl,
-                            description = null,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable { showFullBanner = true },
-                            contentScale = ContentScale.Crop
-                        )
+                        // Build robust background URL — never include 'null' in path
+                        val bgUrl = when {
+                            background.id != null && background.filename != null ->
+                                "$STOAT_FILES/backgrounds/${background.id}/${background.filename}"
+                            background.id != null ->
+                                "$STOAT_FILES/backgrounds/${background.id}/original"
+                            else -> null
+                        }
+                        if (bgUrl != null) {
+                            RemoteImage(
+                                url = bgUrl,
+                                description = null,
+                                forceAnimate = true,  // enable GIF animation for profile banners
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable { showFullBanner = true },
+                                contentScale = ContentScale.Crop
+                            )
+                        }
                     } else {
                         Box(
                             modifier = Modifier

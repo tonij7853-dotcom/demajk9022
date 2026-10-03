@@ -61,7 +61,16 @@ fun RemoteImage(
     val oh = if (overrideSize > 0) overrideSize else height
 
     val localFile = remember(url) { LocalMediaCache.getFile(url) }
-    val model: Any = localFile ?: url
+    val model: Any = remember(url, localFile) {
+        localFile ?: when {
+            url.startsWith("file://") -> {
+                val path = android.net.Uri.parse(url).path
+                if (path != null && java.io.File(path).exists()) java.io.File(path) else android.net.Uri.parse(url)
+            }
+            url.startsWith("content://") -> android.net.Uri.parse(url)
+            else -> url
+        }
+    }
 
     // Any avatar, banner, background, or gif URL is always treated as animatable
     val isAnimatable = shouldAnimate && (
@@ -116,13 +125,20 @@ fun RemoteImage(
                     target: Target<Drawable>?,
                     dataSource: DataSource,
                     isFirstResource: Boolean
-                ): Boolean = false
+                ): Boolean {
+                    if (resource is android.graphics.drawable.Animatable && !resource.isRunning) {
+                        resource.start()
+                    }
+                    return false
+                }
             })
 
             if (isAnimatable) {
-                // For animated GIFs: keep animation enabled, cache raw data, never thumbnail or downsample
+                // For animated GIFs: cache raw data so GIF bytes are preserved,
+                // skip memory cache to prevent stale bitmaps from previous loads,
+                // do NOT set format() — it forces bitmap decode options that can break GIF decoding
                 rb.diskCacheStrategy(DiskCacheStrategy.DATA)
-                    .format(DecodeFormat.PREFER_ARGB_8888)
+                    .skipMemoryCache(true)
             } else {
                 rb.diskCacheStrategy(DiskCacheStrategy.ALL)
                     .format(DecodeFormat.PREFER_ARGB_8888)

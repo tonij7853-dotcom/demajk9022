@@ -141,15 +141,34 @@ fun RawUserOverview(
         val pronouns = user.pronouns?.trim()?.takeIf { it.isNotEmpty() }
 
         if (background != null) {
-            RemoteImage(
-                url = backgroundUrl
-                    ?: "$STOAT_FILES/backgrounds/${if (background is AutumnResource) background.id else null}/${if (background is AutumnResource) background.filename else background}",
-                description = null,
-                modifier = Modifier
-                    .height(cardHeight)
-                    .fillMaxWidth(),
-                contentScale = ContentScale.Crop
-            )
+            // Build robust background URL — never include 'null' in path
+            val bgUrl = if (backgroundUrl != null) {
+                if (backgroundUrl.startsWith("http://") || backgroundUrl.startsWith("https://") || backgroundUrl.startsWith("file://") || backgroundUrl.startsWith("content://")) {
+                    backgroundUrl
+                } else {
+                    "$STOAT_FILES/backgrounds/$backgroundUrl/original"
+                }
+            } else if (background is AutumnResource) {
+                when {
+                    background.id != null && background.filename != null ->
+                        "$STOAT_FILES/backgrounds/${background.id}/${background.filename}"
+                    background.id != null ->
+                        "$STOAT_FILES/backgrounds/${background.id}/original"
+                    else -> null
+                }
+            } else null
+
+            if (bgUrl != null) {
+                RemoteImage(
+                    url = bgUrl,
+                    description = null,
+                    forceAnimate = true,  // always allow GIF animation for backgrounds
+                    modifier = Modifier
+                        .height(cardHeight)
+                        .fillMaxWidth(),
+                    contentScale = ContentScale.Crop
+                )
+            }
 
             Box(
                 modifier = Modifier

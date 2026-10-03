@@ -1,6 +1,7 @@
 package chat.stoat.composables.generic
 
 import android.net.Uri
+import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -168,9 +169,16 @@ fun InlineMediaPickerMediaPicker(
             "crop_shape" to cropShape.name
         ))
         if (uri != null) {
-            if (enableCrop) {
+            // Skip cropper for GIFs — cropping often corrupts animation data
+            val isGif = isGifUri(context, uri)
+            if (enableCrop && !isGif) {
                 pendingCropUri = uri
             } else {
+                AppLogger.i("inline_media_picked_skip_crop", mapOf(
+                    "uri" to uri.toString(),
+                    "is_gif" to isGif,
+                    "enable_crop" to enableCrop
+                ))
                 onPick(uri)
             }
         }
@@ -200,14 +208,51 @@ fun InlineMediaPickerMediaPicker(
         )
     }
 
+    val resolvedModel = remember(currentModel) {
+        when (currentModel) {
+            is String -> {
+                if (currentModel.startsWith("file://")) {
+                    val path = Uri.parse(currentModel).path
+                    if (path != null && File(path).exists()) File(path) else Uri.parse(currentModel)
+                } else if (currentModel.startsWith("content://")) {
+                    Uri.parse(currentModel)
+                } else {
+                    currentModel
+                }
+            }
+            else -> currentModel
+        }
+    }
+
     if (currentModel != null) {
         GlideImage(
-            model = currentModel,
+            model = resolvedModel,
             contentDescription = stringResource(R.string.inline_media_picker_current_description),
             contentScale = ContentScale.Crop,
             requestBuilderTransform = { rb ->
                 rb.diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE)
                     .skipMemoryCache(true)
+                    .listener(object : com.bumptech.glide.request.RequestListener<android.graphics.drawable.Drawable> {
+                        override fun onLoadFailed(
+                            e: com.bumptech.glide.load.engine.GlideException?,
+                            model: Any?,
+                            target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>,
+                            isFirstResource: Boolean
+                        ): Boolean = false
+
+                        override fun onResourceReady(
+                            resource: android.graphics.drawable.Drawable,
+                            model: Any,
+                            target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>?,
+                            dataSource: com.bumptech.glide.load.DataSource,
+                            isFirstResource: Boolean
+                        ): Boolean {
+                            if (resource is android.graphics.drawable.Animatable && !resource.isRunning) {
+                                resource.start()
+                            }
+                            return false
+                        }
+                    })
             },
             modifier = if (circular) {
                 Modifier

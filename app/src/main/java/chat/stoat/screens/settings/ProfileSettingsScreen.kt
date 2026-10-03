@@ -99,16 +99,24 @@ class ProfileSettingsScreenViewModel(val context: Application) :
     init {
         StoatAPI.selfId?.let { self ->
             StoatAPI.userCache[self]?.let { user ->
-                user.avatar?.id?.let {
-                    pfpModel = "$STOAT_FILES/avatars/${it}"
+                user.avatar?.let { av ->
+                    pfpModel = when {
+                        av.id != null && av.filename != null -> "$STOAT_FILES/avatars/${av.id}/${av.filename}"
+                        av.id != null -> "$STOAT_FILES/avatars/${av.id}/original"
+                        else -> null
+                    }
                 }
                 currentPronouns = user.pronouns
                 pendingPronouns = user.pronouns.orEmpty()
             }
             viewModelScope.launch {
                 currentProfile = fetchUserProfile(self)
-                currentProfile?.background?.let {
-                    backgroundModel = "$STOAT_FILES/backgrounds/${it.id}/${it.filename}"
+                currentProfile?.background?.let { bg ->
+                    backgroundModel = when {
+                        bg.id != null && bg.filename != null -> "$STOAT_FILES/backgrounds/${bg.id}/${bg.filename}"
+                        bg.id != null -> "$STOAT_FILES/backgrounds/${bg.id}/original"
+                        else -> null
+                    }
                 }
 
                 pendingProfile = currentProfile?.copy()
@@ -312,16 +320,23 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                 AppLogger.i("profile_save_avatar_autumn_done", mapOf("autumn_id" to id))
 
                 patchSelf(avatar = id)
-                val newAvatarUrl = StoatAPI.userCache[StoatAPI.selfId]?.avatar?.let {
-                    "$STOAT_FILES/avatars/${it.id}/${it.filename}"
-                } ?: StoatAPI.userCache[StoatAPI.selfId]?.avatar?.id?.let {
-                    "$STOAT_FILES/avatars/${it}"
+                // Build avatar URL: prefer id/filename, fall back to id-only, then raw autumn id
+                val cachedAvatar = StoatAPI.userCache[StoatAPI.selfId]?.avatar
+                val newAvatarUrl = when {
+                    cachedAvatar?.id != null && cachedAvatar.filename != null ->
+                        "$STOAT_FILES/avatars/${cachedAvatar.id}/${cachedAvatar.filename}"
+                    cachedAvatar?.id != null ->
+                        "$STOAT_FILES/avatars/${cachedAvatar.id}/original"
+                    else ->
+                        "$STOAT_FILES/avatars/$id/original"  // fallback to raw autumn id with /original alias
                 }
 
                 AppLogger.i("profile_save_avatar_success", mapOf(
                     "autumn_id" to id,
                     "size_bytes" to mFile.length(),
-                    "new_avatar_url" to (newAvatarUrl ?: "null"),
+                    "new_avatar_url" to newAvatarUrl,
+                    "cached_avatar_id" to (cachedAvatar?.id ?: "null"),
+                    "cached_avatar_filename" to (cachedAvatar?.filename ?: "null"),
                     "total_duration_ms" to (System.currentTimeMillis() - startTime)
                 ))
 
@@ -389,16 +404,23 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                 AppLogger.i("profile_save_banner_patch_done", mapOf("autumn_id" to id))
 
                 val profile = StoatAPI.selfId?.let { fetchUserProfile(it) }
-                val newBgUrl = profile?.background?.let {
-                    "$STOAT_FILES/backgrounds/${it.id}/${it.filename}"
-                } ?: profile?.background?.id?.let {
-                    "$STOAT_FILES/backgrounds/${it}"
+                // Build background URL: prefer id/filename, fall back to id/original, then raw autumn id
+                val bgResource = profile?.background
+                val newBgUrl = when {
+                    bgResource?.id != null && bgResource.filename != null ->
+                        "$STOAT_FILES/backgrounds/${bgResource.id}/${bgResource.filename}"
+                    bgResource?.id != null ->
+                        "$STOAT_FILES/backgrounds/${bgResource.id}/original"
+                    else ->
+                        "$STOAT_FILES/backgrounds/$id/original"  // fallback to raw autumn id with /original alias
                 }
 
                 AppLogger.i("profile_save_banner_success", mapOf(
                     "autumn_id" to id,
                     "size_bytes" to mFile.length(),
-                    "new_bg_url" to (newBgUrl ?: "null"),
+                    "new_bg_url" to newBgUrl,
+                    "bg_resource_id" to (bgResource?.id ?: "null"),
+                    "bg_resource_filename" to (bgResource?.filename ?: "null"),
                     "total_duration_ms" to (System.currentTimeMillis() - startTime)
                 ))
 
@@ -406,8 +428,8 @@ class ProfileSettingsScreenViewModel(val context: Application) :
                     if (profile != null) {
                         currentProfile = profile
                         pendingProfile = profile
-                        backgroundModel = newBgUrl
                     }
+                    backgroundModel = newBgUrl  // never null after successful upload
                     pendingBannerUri = null
                     isSavingBanner = false
                     uploadProgress = 0f
