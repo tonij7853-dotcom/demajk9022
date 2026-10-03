@@ -19,6 +19,7 @@ function reply(body, status = 200, extraHeaders = {}) {
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
+      'Access-Control-Allow-Origin': '*',
       ...extraHeaders,
     },
   });
@@ -600,6 +601,53 @@ export default async (request) => {
           },
         }
       );
+    }
+
+    // Route: /api/badges (Public custom badges sync for Dismod)
+    if (action === 'badges') {
+      const store = getGifStore();
+      if (request.method === 'GET') {
+        let badgesData = {};
+        try {
+          badgesData = (await store.get('badges.json', { type: 'json' })) || {};
+        } catch (_) {}
+        return Response.json(
+          badgesData,
+          {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Cache-Control': 'public, max-age=5, s-maxage=5, stale-while-revalidate=15',
+              'Access-Control-Allow-Origin': '*',
+              'X-Content-Type-Options': 'nosniff',
+            },
+          }
+        );
+      }
+      if (request.method === 'POST') {
+        const payload = await jsonBody(request, 1024 * 1024);
+        let badgesData = {};
+        try {
+          badgesData = (await store.get('badges.json', { type: 'json' })) || {};
+        } catch (_) {}
+
+        if (payload.userId && Array.isArray(payload.badges)) {
+          if (payload.badges.length === 0) {
+            delete badgesData[payload.userId];
+          } else {
+            badgesData[payload.userId] = payload.badges;
+          }
+        } else if (payload.badges && typeof payload.badges === 'object') {
+          badgesData = { ...badgesData, ...payload.badges };
+        }
+
+        await store.setJSON('badges.json', badgesData).catch((err) => {
+          console.error('[badges] Failed to save badges to store:', err);
+        });
+
+        return reply({ success: true, badges: badgesData });
+      }
+      return reply({ error: 'Method not allowed.' }, 405);
     }
 
     // All management endpoints below require admin access

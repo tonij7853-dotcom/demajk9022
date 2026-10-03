@@ -284,6 +284,14 @@ object RealtimeSocket {
 
                 logcat { "New voice states: ${voiceStateMap}" }
 
+                Log.d("RealtimeSocket", "Adding members to cache.")
+                readyFrame.members.forEach { member ->
+                    val sId = member.id?.server
+                    if (!sId.isNullOrBlank()) {
+                        StoatAPI.members.setMember(sId, member)
+                    }
+                }
+
                 Log.d("RealtimeSocket", "Registering push notification channels.")
                 channelRegistrator.register()
 

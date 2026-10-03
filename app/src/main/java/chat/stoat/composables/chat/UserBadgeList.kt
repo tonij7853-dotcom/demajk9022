@@ -277,21 +277,26 @@ fun BadgeListEntry(badge: UserBadges) {
  * and owner-assigned custom badges for [userId].
  */
 @Composable
-fun UserBadgeList(badges: Long, userId: String? = null) {
+fun UserBadgeList(badges: Long, userId: String? = null, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val allEntries = badgeEntries()
-    val activeBadges = allEntries.filter { badges has it.badge }
+    val activeBadges = remember(badges) { allEntries.filter { badges has it.badge } }
 
     var customBadges by remember(userId) { mutableStateOf<Set<CustomBadge>>(emptySet()) }
     LaunchedEffect(userId) {
-        if (userId != null) {
-            customBadges = withContext(Dispatchers.IO) {
-                CustomBadgeStore.get(context).getBadges(userId)
+        if (!userId.isNullOrBlank()) {
+            CustomBadgeStore.get(context).observeBadges(userId).collect {
+                customBadges = it
             }
+        } else {
+            customBadges = emptySet()
         }
     }
 
+    if (activeBadges.isEmpty() && customBadges.isEmpty()) return
+
     Column(
+        modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         activeBadges.forEach { entry ->
@@ -311,21 +316,26 @@ fun UserBadgeList(badges: Long, userId: String? = null) {
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun UserBadgeRow(badges: Long, userId: String? = null) {
+fun UserBadgeRow(badges: Long, userId: String? = null, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val allEntries = badgeEntries()
-    val activeBadges = allEntries.filter { badges has it.badge }
+    val activeBadges = remember(badges) { allEntries.filter { badges has it.badge } }
 
     var customBadges by remember(userId) { mutableStateOf<Set<CustomBadge>>(emptySet()) }
     LaunchedEffect(userId) {
-        if (userId != null) {
-            customBadges = withContext(Dispatchers.IO) {
-                CustomBadgeStore.get(context).getBadges(userId)
+        if (!userId.isNullOrBlank()) {
+            CustomBadgeStore.get(context).observeBadges(userId).collect {
+                customBadges = it
             }
+        } else {
+            customBadges = emptySet()
         }
     }
 
+    if (activeBadges.isEmpty() && customBadges.isEmpty()) return
+
     FlowRow(
+        modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {

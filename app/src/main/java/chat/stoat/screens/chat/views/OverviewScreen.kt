@@ -59,14 +59,22 @@ import androidx.navigation.NavController
 import chat.stoat.R
 import chat.stoat.api.StoatAPI
 import chat.stoat.api.internals.ULID
+import chat.stoat.api.routes.server.fetchMember
 import chat.stoat.api.routes.user.fetchSelf
 import chat.stoat.api.routes.user.fetchUserProfile
+import chat.stoat.api.settings.CustomBadgeStore
 import chat.stoat.composables.generic.NonIdealState
 import chat.stoat.composables.generic.RemoteImage
 import chat.stoat.composables.generic.UserAvatar
 import chat.stoat.composables.markdown.prose.ChatMarkdown
 import chat.stoat.api.internals.ResourceLocations
 import chat.stoat.composables.generic.AvatarViewerDialog
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.graphics.SolidColor
+import chat.stoat.api.internals.BrushCompat
+import chat.stoat.composables.chat.UserBadgeRow
+import chat.stoat.core.model.schemas.Role
 import chat.stoat.core.model.schemas.UserBadges
 import chat.stoat.core.model.schemas.has
 import chat.stoat.core.model.data.STOAT_FILES
@@ -86,7 +94,7 @@ private fun formatProfileDate(timestampMs: Long): String {
     return sdf.format(date)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun OverviewScreen(
     navController: NavController,
@@ -466,6 +474,108 @@ fun OverviewScreen(
                                         fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
+                                }
+                            }
+                        }
+
+                        // Cloud badge sync on screen view
+                        LaunchedEffect(currentUser.id) {
+                            CustomBadgeStore.get(context).syncWithCloud()
+                        }
+
+                        // BADGES (Official + Synced custom badges)
+                        if ((currentUser.badges ?: 0) > 0 || !currentUser.id.isNullOrBlank()) {
+                            Spacer(Modifier.height(10.dp))
+                            UserBadgeRow(
+                                badges = currentUser.badges ?: 0L,
+                                userId = currentUser.id
+                            )
+                        }
+
+                        // SERVER ROLES (Roles assigned to this user across servers)
+                        var userRolesList by remember(currentUser.id) {
+                            val selfId = currentUser.id ?: ""
+                            val result = mutableListOf<Pair<String, Role>>()
+                            StoatAPI.serverCache.values.forEach { srv ->
+                                val member = srv.id?.let { StoatAPI.members.getMember(it, selfId) }
+                                member?.roles?.forEach { roleId ->
+                                    val r = srv.roles?.get(roleId)
+                                    if (r != null) {
+                                        result.add((srv.name ?: "Server") to r)
+                                    }
+                                }
+                            }
+                            mutableStateOf(result)
+                        }
+
+                        LaunchedEffect(currentUser.id, StoatAPI.serverCache.size) {
+                            val selfId = currentUser.id ?: return@LaunchedEffect
+                            fun updateRoles() {
+                                val result = mutableListOf<Pair<String, Role>>()
+                                StoatAPI.serverCache.values.forEach { srv ->
+                                    val member = srv.id?.let { StoatAPI.members.getMember(it, selfId) }
+                                    member?.roles?.forEach { roleId ->
+                                        val r = srv.roles?.get(roleId)
+                                        if (r != null) {
+                                            result.add((srv.name ?: "Server") to r)
+                                        }
+                                    }
+                                }
+                                userRolesList = result
+                            }
+                            updateRoles()
+
+                            // If self member is missing in any server cache, fetch it
+                            StoatAPI.serverCache.values.forEach { srv ->
+                                val sId = srv.id ?: return@forEach
+                                if (!StoatAPI.members.hasMember(sId, selfId)) {
+                                    try {
+                                        fetchMember(sId, selfId)
+                                        updateRoles()
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        }
+
+                        if (userRolesList.isNotEmpty()) {
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "Roles",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                userRolesList.forEach { (serverName, role) ->
+                                    val roleBrush = role.colour?.let { BrushCompat.parseColour(it) }
+                                        ?: SolidColor(MaterialTheme.colorScheme.primary)
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surfaceContainerHighest
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(10.dp)
+                                                    .clip(CircleShape)
+                                                    .background(roleBrush)
+                                            )
+                                            Text(
+                                                text = if (StoatAPI.serverCache.size > 1) "${role.name ?: "Role"} (${serverName})" else (role.name ?: "Role"),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

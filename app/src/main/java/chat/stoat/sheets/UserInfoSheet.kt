@@ -74,6 +74,7 @@ import chat.stoat.api.StoatAPI
 import chat.stoat.api.internals.BrushCompat
 import chat.stoat.api.internals.ResourceLocations
 import chat.stoat.api.internals.ULID
+import chat.stoat.api.routes.server.fetchMember
 import chat.stoat.api.routes.user.acceptFriendRequest
 import chat.stoat.api.routes.user.fetchUserProfile
 import chat.stoat.api.routes.user.friendUser
@@ -192,8 +193,8 @@ fun UserInfoSheet(
     if (showCustomBadgeSheet && user?.id != null) {
         val targetUid = user!!.id!!
         LaunchedEffect(targetUid, showCustomBadgeSheet) {
-            assignedBadges = withContext(Dispatchers.IO) {
-                CustomBadgeStore.get(context).getBadges(targetUid)
+            CustomBadgeStore.get(context).observeBadges(targetUid).collect {
+                assignedBadges = it
             }
         }
         ModalBottomSheet(
@@ -243,10 +244,6 @@ fun UserInfoSheet(
                             modifier = Modifier.clickable {
                                 scope.launch(Dispatchers.IO) {
                                     CustomBadgeStore.get(context).toggleBadge(targetUid, badge)
-                                    val updated = CustomBadgeStore.get(context).getBadges(targetUid)
-                                    withContext(Dispatchers.Main) {
-                                        assignedBadges = updated
-                                    }
                                 }
                             }
                         ) {
@@ -890,9 +887,50 @@ fun UserInfoSheet(
                         )
                     }
 
-                    // Server Roles (if in a server)
-                    val memberRoles = member?.roles
-                    if (!memberRoles.isNullOrEmpty() && server != null) {
+                    // Server Roles (in current server, or across shared servers if opened from DM)
+                    var sheetRoles by remember(server, currentUser.id) {
+                        val currentMemberRoles = member?.roles
+                        val initial = if (!currentMemberRoles.isNullOrEmpty() && server != null) {
+                            currentMemberRoles.mapNotNull { rId -> server.roles?.get(rId)?.let { (server.name ?: "") to it } }
+                        } else {
+                            val uid = currentUser.id ?: ""
+                            StoatAPI.serverCache.values.flatMap { srv ->
+                                val m = srv.id?.let { StoatAPI.members.getMember(it, uid) }
+                                m?.roles?.mapNotNull { rId -> srv.roles?.get(rId)?.let { (srv.name ?: "") to it } } ?: emptyList()
+                            }
+                        }
+                        mutableStateOf(initial)
+                    }
+
+                    LaunchedEffect(currentUser.id, server?.id) {
+                        val uid = currentUser.id ?: return@LaunchedEffect
+                        if (server != null && server.id != null) {
+                            if (!StoatAPI.members.hasMember(server.id!!, uid)) {
+                                try {
+                                    val fetchedMember = fetchMember(server.id!!, uid)
+                                    sheetRoles = fetchedMember.roles?.mapNotNull { rId ->
+                                        server.roles?.get(rId)?.let { (server.name ?: "") to it }
+                                    } ?: emptyList()
+                                } catch (_: Exception) {}
+                            }
+                        } else {
+                            // DM context: check shared servers where this user might be
+                            StoatAPI.serverCache.values.forEach { srv ->
+                                val sId = srv.id ?: return@forEach
+                                if (!StoatAPI.members.hasMember(sId, uid)) {
+                                    try {
+                                        fetchMember(sId, uid)
+                                        sheetRoles = StoatAPI.serverCache.values.flatMap { s ->
+                                            val m = s.id?.let { StoatAPI.members.getMember(it, uid) }
+                                            m?.roles?.mapNotNull { rId -> s.roles?.get(rId)?.let { (s.name ?: "") to it } } ?: emptyList()
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        }
+                    }
+
+                    if (sheetRoles.isNotEmpty()) {
                         Spacer(Modifier.height(12.dp))
                         Text(
                             text = "Roles",
@@ -905,33 +943,30 @@ fun UserInfoSheet(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            memberRoles.forEach { roleId ->
-                                val role = server.roles?.get(roleId)
-                                if (role != null) {
-                                    val roleBrush = role.colour?.let { BrushCompat.parseColour(it) }
-                                        ?: SolidColor(MaterialTheme.colorScheme.primary)
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.surfaceContainerHighest
+                            sheetRoles.forEach { (serverName, role) ->
+                                val roleBrush = role.colour?.let { BrushCompat.parseColour(it) }
+                                    ?: SolidColor(MaterialTheme.colorScheme.primary)
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHighest
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(10.dp)
-                                                    .clip(CircleShape)
-                                                    .background(roleBrush)
-                                            )
-                                            Text(
-                                                text = role.name ?: "Role",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Medium,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .clip(CircleShape)
+                                                .background(roleBrush)
+                                        )
+                                        Text(
+                                            text = if (server == null && StoatAPI.serverCache.size > 1) "${role.name ?: "Role"} (${serverName})" else (role.name ?: "Role"),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
                                     }
                                 }
                             }
