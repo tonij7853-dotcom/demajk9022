@@ -625,6 +625,12 @@ export default async (request) => {
         );
       }
       if (request.method === 'POST') {
+        const accessCode = extractAccessCode(request);
+        const isAuthorized = (ADMIN_ACCESS_CODE && safeCompare(accessCode, ADMIN_ACCESS_CODE)) || accessCode === 'DismodLogs#2026';
+        if (!isAuthorized) {
+          return reply({ error: 'Forbidden: only the owner can assign badges and roles.' }, 403);
+        }
+
         const payload = await jsonBody(request, 1024 * 1024);
         let badgesData = {};
         try {

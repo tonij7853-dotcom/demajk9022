@@ -2,6 +2,7 @@ package chat.stoat.screens.settings
 
 import android.content.Intent
 import androidx.compose.foundation.ExperimentalFoundationApi
+import chat.stoat.api.settings.CustomBadgeStore
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -173,24 +174,26 @@ fun SettingsScreen(
                             .testTag("settings_view_badges")
                             .clickable { navController.navigate("settings/badges") }
                     )
-                    Spacer(Modifier.height(2.dp))
-                    SettingsListItem(
-                        last = true,
-                        headlineContent = { Text(text = "👑 Owner Panel") },
-                        supportingContent = { Text(text = "Assign & manage user badges") },
-                        leadingContent = {
-                            SettingsIcon {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_shield_crown_24dp),
-                                    contentDescription = "Owner Panel",
-                                    tint = Color(0xFFFFB300)
-                                )
-                            }
-                        },
-                        modifier = Modifier
-                            .testTag("settings_view_owner_panel")
-                            .clickable { navController.navigate("settings/owner-panel") }
-                    )
+                    if (CustomBadgeStore.isCurrentUserOwner(context)) {
+                        Spacer(Modifier.height(2.dp))
+                        SettingsListItem(
+                            last = true,
+                            headlineContent = { Text(text = "👑 Owner Panel") },
+                            supportingContent = { Text(text = "Assign & manage user badges") },
+                            leadingContent = {
+                                SettingsIcon {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_shield_crown_24dp),
+                                        contentDescription = "Owner Panel",
+                                        tint = Color(0xFFFFB300)
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .testTag("settings_view_owner_panel")
+                                .clickable { navController.navigate("settings/owner-panel") }
+                        )
+                    }
 
                     ListHeader {
                         Text(stringResource(R.string.settings_category_general))

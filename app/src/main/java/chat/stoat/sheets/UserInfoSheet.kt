@@ -190,7 +190,7 @@ fun UserInfoSheet(
         )
     }
 
-    if (showCustomBadgeSheet && user?.id != null) {
+    if (showCustomBadgeSheet && user?.id != null && CustomBadgeStore.isCurrentUserOwner(context)) {
         val targetUid = user!!.id!!
         LaunchedEffect(targetUid, showCustomBadgeSheet) {
             CustomBadgeStore.get(context).observeBadges(targetUid).collect {
@@ -665,20 +665,25 @@ fun UserInfoSheet(
                                     )
                                 }
 
-                                // Owner Give Badge Button
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    modifier = Modifier.clickable {
-                                        showCustomBadgeSheet = true
+                                // Owner Give Badge Button (ONLY visible to the app owner)
+                                val isViewerOwner = remember(StoatAPI.selfId, StoatAPI.userCache[StoatAPI.selfId]) {
+                                    CustomBadgeStore.isCurrentUserOwner(context)
+                                }
+                                if (isViewerOwner) {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        modifier = Modifier.clickable {
+                                            showCustomBadgeSheet = true
+                                        }
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_shield_crown_24dp),
+                                            contentDescription = "Give Badge",
+                                            tint = Color(0xFFFFB300),
+                                            modifier = Modifier.padding(8.dp).size(18.dp)
+                                        )
                                     }
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_shield_crown_24dp),
-                                        contentDescription = "Give Badge",
-                                        tint = Color(0xFFFFB300),
-                                        modifier = Modifier.padding(8.dp).size(18.dp)
-                                    )
                                 }
                             }
                         }

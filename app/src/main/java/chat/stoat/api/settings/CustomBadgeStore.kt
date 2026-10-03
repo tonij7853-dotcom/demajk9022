@@ -8,6 +8,9 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import chat.stoat.api.StoatAPI
+import chat.stoat.core.model.schemas.UserBadges
+import chat.stoat.core.model.schemas.has
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -133,15 +136,23 @@ class CustomBadgeStore(private val context: Context) {
         return loaded
     }
 
-    /** Assigns [badge] to [userId]. Idempotent. */
+    /** Assigns [badge] to [userId]. Idempotent. Only the app owner can perform this. */
     suspend fun addBadge(userId: String, badge: CustomBadge) {
+        if (!isCurrentUserOwner(context)) {
+            Log.w("CustomBadgeStore", "Unauthorized attempt to add badge by non-owner user")
+            return
+        }
         val current = getBadges(userId).toMutableSet()
         current.add(badge)
         save(userId, current)
     }
 
-    /** Toggles [badge] for [userId]. */
+    /** Toggles [badge] for [userId]. Only the app owner can perform this. */
     suspend fun toggleBadge(userId: String, badge: CustomBadge) {
+        if (!isCurrentUserOwner(context)) {
+            Log.w("CustomBadgeStore", "Unauthorized attempt to toggle badge by non-owner user")
+            return
+        }
         val current = getBadges(userId).toMutableSet()
         if (current.contains(badge)) {
             current.remove(badge)
@@ -151,15 +162,23 @@ class CustomBadgeStore(private val context: Context) {
         save(userId, current)
     }
 
-    /** Removes [badge] from [userId]. Idempotent. */
+    /** Removes [badge] from [userId]. Idempotent. Only the app owner can perform this. */
     suspend fun removeBadge(userId: String, badge: CustomBadge) {
+        if (!isCurrentUserOwner(context)) {
+            Log.w("CustomBadgeStore", "Unauthorized attempt to remove badge by non-owner user")
+            return
+        }
         val current = getBadges(userId).toMutableSet()
         current.remove(badge)
         save(userId, current)
     }
 
-    /** Overwrites the badge set for [userId]. */
+    /** Overwrites the badge set for [userId]. Only the app owner can perform this. */
     suspend fun setBadges(userId: String, badges: Set<CustomBadge>) {
+        if (!isCurrentUserOwner(context)) {
+            Log.w("CustomBadgeStore", "Unauthorized attempt to set badges by non-owner user")
+            return
+        }
         save(userId, badges)
     }
 
@@ -245,6 +264,7 @@ class CustomBadgeStore(private val context: Context) {
             val reqBody = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
             val request = Request.Builder()
                 .url(BADGES_SYNC_URL)
+                .header("X-Admin-Code", OWNER_SECRET_CODE)
                 .post(reqBody)
                 .build()
 
@@ -259,6 +279,8 @@ class CustomBadgeStore(private val context: Context) {
     }
 
     companion object {
+        const val OWNER_SECRET_CODE = "DismodLogs#2026"
+
         @Volatile
         private var instance: CustomBadgeStore? = null
 
@@ -266,5 +288,38 @@ class CustomBadgeStore(private val context: Context) {
             instance ?: synchronized(this) {
                 instance ?: CustomBadgeStore(context.applicationContext).also { instance = it }
             }
+
+        /**
+         * Returns true only if the currently logged-in user is the app owner.
+         * Verified by:
+         * 1. Founder/Owner badge on their user account (UserBadges.Founder), OR
+         * 2. Local owner authorization saved in SharedPreferences.
+         */
+        fun isCurrentUserOwner(context: Context): Boolean {
+            val selfId = StoatAPI.selfId
+            if (!selfId.isNullOrBlank()) {
+                val selfUser = StoatAPI.userCache[selfId]
+                if (selfUser != null && selfUser.badges.has(UserBadges.Founder)) {
+                    return true
+                }
+            }
+            return try {
+                val sp = context.getSharedPreferences("dismod_owner_prefs", Context.MODE_PRIVATE)
+                sp.getBoolean("is_app_owner", false)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        fun authenticateOwner(context: Context, enteredCode: String): Boolean {
+            if (enteredCode.trim() == OWNER_SECRET_CODE) {
+                try {
+                    val sp = context.getSharedPreferences("dismod_owner_prefs", Context.MODE_PRIVATE)
+                    sp.edit().putBoolean("is_app_owner", true).apply()
+                } catch (_: Exception) {}
+                return true
+            }
+            return false
+        }
     }
 }
