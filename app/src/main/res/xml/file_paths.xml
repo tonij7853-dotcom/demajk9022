@@ -1,4 +1,22 @@
-<paths>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Root mappings covering internal & external storage -->
+    <cache-path
+        name="internal_cache"
+        path="." />
+    <files-path
+        name="internal_files"
+        path="." />
+    <external-cache-path
+        name="external_cache"
+        path="." />
+    <external-files-path
+        name="external_files"
+        path="." />
+    <external-path
+        name="external_storage"
+        path="." />
+
+    <!-- Specific sub-paths for backwards compatibility -->
     <cache-path
         path="attachments/"
         name="attachments" />
@@ -8,6 +26,9 @@
     <cache-path
         path="updates/"
         name="updates" />
+    <external-cache-path
+        path="updates/"
+        name="external_updates" />
     <files-path
         path="logs/"
         name="app_logs" />
