@@ -1,5 +1,7 @@
 package chat.stoat.updater
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -257,8 +259,26 @@ fun DismodUpdateDialog(
                     Text(state.message)
                 },
                 confirmButton = {
-                    TextButton(onClick = onDismiss) {
-                        Text("OK")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = {
+                                try {
+                                    val browserIntent = Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://github.com/tonij7853-dotcom/demajk9022/releases/latest")
+                                    ).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(browserIntent)
+                                } catch (_: Exception) {}
+                                onDismiss()
+                            }
+                        ) {
+                            Text("Download in Browser")
+                        }
+                        TextButton(onClick = onDismiss) {
+                            Text("OK")
+                        }
                     }
                 },
                 containerColor = MaterialTheme.colorScheme.surface,

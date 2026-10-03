@@ -132,7 +132,7 @@ object DismodUpdater {
                 _state.value = DismodUpdateState.Downloading(info, 0f)
 
                 val apkFile = withContext(Dispatchers.IO) {
-                    val cacheFolder = context.externalCacheDir ?: context.cacheDir
+                    val cacheFolder = context.cacheDir
                     val updatesDir = File(cacheFolder, "updates").apply {
                         mkdirs()
                         listFiles()?.forEach { file ->
@@ -203,11 +203,26 @@ object DismodUpdater {
                 }
             }
 
-            val apkUri: Uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                apkFile
-            )
+            val apkUri: Uri = try {
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    apkFile
+                )
+            } catch (e: IllegalArgumentException) {
+                // If FileProvider failed to find configured root (e.g. from an unmapped directory),
+                // copy to internal cacheDir/updates/ which is always configured in file_paths.xml
+                val fallbackDir = File(context.cacheDir, "updates").apply { mkdirs() }
+                val fallbackFile = File(fallbackDir, apkFile.name)
+                if (apkFile.absolutePath != fallbackFile.absolutePath) {
+                    apkFile.copyTo(fallbackFile, overwrite = true)
+                }
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    fallbackFile
+                )
+            }
 
             val installIntent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(apkUri, "application/vnd.android.package-archive")
